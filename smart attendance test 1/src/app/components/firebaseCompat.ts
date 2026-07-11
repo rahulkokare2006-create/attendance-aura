@@ -23,6 +23,16 @@ const getSocket = () => {
       auth: { token: getToken() },
       transports: ['websocket', 'polling'],
     });
+    // Diagnostic logging
+    socket.on('connect', () => {
+      console.log('[Socket] connected', socket.id, 'to', API_URL);
+    });
+    socket.on('connect_error', (err: any) => {
+      console.error('[Socket] connect_error', err?.message || err);
+    });
+    socket.on('disconnect', (reason: any) => {
+      console.log('[Socket] disconnected', reason);
+    });
   }
   return socket;
 };

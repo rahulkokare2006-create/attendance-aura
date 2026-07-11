@@ -50,6 +50,7 @@ router.post('/start-session', protect, restrictTo('teacher', 'manager'), async (
 
     // Emit via socket.io
     req.app.get('io').emit(`session:${sessionId}:update`, { records });
+    console.log(`[IO] Emitted session:${sessionId}:update (start-session)`);
 
     res.json({ success: true, session });
   } catch (err) {
@@ -70,6 +71,7 @@ router.put('/update-otp', protect, restrictTo('teacher', 'manager'), async (req,
     
     // Emit via socket.io
     req.app.get('io').emit(`session:${sessionId}:otp-update`, { otp, qrData });
+    console.log(`[IO] Emitted session:${sessionId}:otp-update (update-otp)`);
     
     res.json({ success: true, session });
   } catch (err) {
@@ -173,9 +175,13 @@ router.post('/mark', protect, restrictTo('student'), async (req, res) => {
     }
 
     // Emit real-time update via socket.io
-    req.app.get('io').emit(`session:${sessionId}:update`, {
-      usn, status: 'PRESENT', records: updatedSession.records.toObject ? updatedSession.records.toObject() : Object.fromEntries(updatedSession.records || [])
-    });
+    const payload = {
+      usn,
+      status: 'PRESENT',
+      records: updatedSession.records.toObject ? updatedSession.records.toObject() : Object.fromEntries(updatedSession.records || [])
+    };
+    req.app.get('io').emit(`session:${sessionId}:update`, payload);
+    console.log(`[IO] Emitted session:${sessionId}:update (mark) -> usn=${usn}`);
 
     res.json({ success: true, message: '🎉 Attendance marked successfully!' });
   } catch (err) {
