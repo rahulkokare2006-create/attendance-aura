@@ -1,0 +1,1144 @@
+{
+  "auditMetadata": {
+    "timestamp": "2024-07-11T00:00:00Z",
+    "scope": "Attendance Backend System - MongoDB",
+    "files_audited": 13,
+    "critical_issues_found": 8,
+    "warnings_found": 12,
+    "recommendations": 15
+  },
+  "fileAnalysis": {
+    "middleware/auth.js": {
+      "endpoints": [],
+      "middleware_functions": [
+        {
+          "name": "protect",
+          "purpose": "JWT authentication & user validation",
+          "validation": [
+            "✅ Checks token present in Authorization header",
+            "✅ Verifies JWT signature",
+            "✅ Checks user exists and is active",
+            "⚠️ Token error handling generic - doesn't distinguish between expired/invalid"
+          ],
+          "error_handling": "✅ 401 for missing/invalid token, 401 for inactive user",
+          "issues": [
+            "No rate limiting on failed auth attempts",
+            "Removes password from user object but doesn't remove emailVerifyToken/resetPasswordToken consistently",
+            "Error message doesn't help debugging - 'Invalid or expired token' is same for both cases"
+          ]
+        },
+        {
+          "name": "restrictTo",
+          "purpose": "Role-based access control (RBAC)",
+          "validation": "✅ Checks user authenticated and has required role",
+          "error_handling": "✅ 401 if not authenticated, 403 if role not permitted",
+          "issues": [
+            "Returns detailed role info in error message (information disclosure risk)",
+            "No check for falsy roles",
+            "No audit logging of privilege denial"
+          ]
+        }
+      ],
+      "summary": "Basic but functional auth middleware. Main issues are lack of rate limiting and audit logging."
+    },
+    "models/User.js": {
+      "fields_verification": [
+        {
+          "field": "name",
+          "type": "String (required, trimmed)",
+          "status": "✅ NEEDED - Display name required for all roles"
+        },
+        {
+          "field": "email",
+          "type": "String (required, unique, lowercase)",
+          "status": "✅ NEEDED - Identity verification, unique constraint"
+        },
+        {
+          "field": "password",
+          "type": "String (required, min 6)",
+          "status": "✅ NEEDED - Security"
+        },
+        {
+          "field": "role",
+          "type": "Enum (admin|teacher|student|parent|manager)",
+          "status": "✅ NEEDED - RBAC"
+        },
+        {
+          "field": "phone",
+          "type": "String (optional)",
+          "status": "✅ NEEDED - Contact info"
+        },
+        {
+          "field": "department/designation",
+          "type": "String (optional)",
+          "status": "⚠️ PARTIALLY USED - Only for teacher/admin, inconsistent naming"
+        },
+        {
+          "field": "rollNo, usn, branch, semester, section, batch",
+          "type": "String (optional, some uppercase)",
+          "status": "✅ NEEDED - Student academic info"
+        },
+        {
+          "field": "childName, childUSN",
+          "type": "String (optional, uppercase)",
+          "status": "✅ NEEDED - Parent association"
+        },
+        {
+          "field": "isActive",
+          "type": "Boolean (default true)",
+          "status": "✅ NEEDED - Soft delete capability"
+        },
+        {
+          "field": "isEmailVerified, emailVerifyToken",
+          "type": "Boolean, String (optional)",
+          "status": "✅ NEEDED - Email verification flow"
+        },
+        {
+          "field": "resetPasswordToken, resetPasswordExpires",
+          "type": "String, Date (optional)",
+          "status": "✅ NEEDED - Password reset flow"
+        }
+      ],
+      "issues": [
+        "❌ No email format validation at schema level",
+        "⚠️ No usn/roll number uniqueness constraints (could cause duplicates)",
+        "⚠️ No timestamp validation (created vs reset attempt timing)",
+        "⚠️ department field used inconsistently (teachers vs managers)"
+      ],
+      "summary": "All fields appear necessary. Schema is comprehensive but lacks some validation constraints."
+    },
+    "models/Class.js": {
+      "structure": [
+        {
+          "field": "teacherId",
+          "type": "ObjectId ref User (required)",
+          "status": "✅ NEEDED - Class ownership"
+        },
+        {
+          "field": "name, subject, subjectCode, branch, semester, section, batch, type",
+          "type": "Mixed strings (required/optional)",
+          "status": "✅ NEEDED - Class metadata"
+        },
+        {
+          "field": "students",
+          "type": "Array of {usn, name, rollNo}",
+          "status": "✅ NEEDED - Class enrollment"
+        },
+        {
+          "field": "radius, isActive",
+          "type": "Number, Boolean",
+          "status": "✅ NEEDED - GPS geofencing config, soft delete"
+        }
+      ],
+      "issues": [
+        "❌ No validation that students is not empty (could create empty classes)",
+        "⚠️ subjectCode has no unique constraint (different classes could have same code)",
+        "⚠️ No constraint preventing duplicate student USNs in same class",
+        "⚠️ radius default 50 (meters) - no max/min constraints"
+      ],
+      "summary": "Enrollment structure is good but lacks validation. No duplicate student prevention."
+    },
+    "models/Attendance.js": {
+      "record_structure": [
+        {
+          "field": "classId, teacherId, className, subject, branch, semester, section",
+          "status": "✅ NEEDED - Class reference and metadata for reporting"
+        },
+        {
+          "field": "date (YYYY-MM-DD), year, records array",
+          "status": "✅ NEEDED - Attendance data",
+          "note": "Date is stored as string, should be Date type"
+        },
+        {
+          "field": "sessionId, startTime, endTime",
+          "status": "✅ NEEDED - Session reference and timing"
+        }
+      ],
+      "records_array_format": {
+        "usn": "uppercase string (required)",
+        "studentName": "string (required)",
+        "status": "PRESENT|ABSENT (required)",
+        "markedAt": "ISO date (optional)",
+        "_id": false
+      },
+      "issues": [
+        "❌ date stored as String instead of Date type (no timezone handling)",
+        "❌ No index on (classId, date) for efficient queries",
+        "⚠️ markedAt is nullable but status is required (inconsistent)",
+        "⚠️ year stored separately from date (data redundancy)"
+      ],
+      "summary": "Basic structure works but has data type issues and missing indexes."
+    },
+    "models/ActiveSession.js": {
+      "key_fields": [
+        {
+          "field": "sessionId (unique)",
+          "type": "String",
+          "status": "✅ UNIQUE - Session identifier"
+        },
+        {
+          "field": "teacherId, classId, Class metadata",
+          "status": "✅ NEEDED - Session ownership"
+        },
+        {
+          "field": "otp, qrData, geoFencingEnabled",
+          "status": "✅ NEEDED - Attendance marking mechanisms"
+        },
+        {
+          "field": "teacherLat, teacherLng, gpsRadius",
+          "status": "✅ NEEDED - GPS geofencing"
+        },
+        {
+          "field": "records (Map of usn: PRESENT/ABSENT)",
+          "status": "✅ NEEDED - Live attendance tracking"
+        },
+        {
+          "field": "markedStudents (Map of usn: {markedAt})",
+          "status": "✅ NEEDED - Prevent double marking"
+        },
+        {
+          "field": "date, startTime, isActive",
+          "status": "✅ NEEDED - Session timing"
+        },
+        {
+          "field": "outsideAlerts array",
+          "status": "✅ NEEDED - GPS violation tracking"
+        }
+      ],
+      "issues": [
+        "⚠️ Using Map for records/markedStudents (can have serialization issues with toObject)",
+        "⚠️ startTime stored as locale string (timezone dependent, not ideal)",
+        "⚠️ No constraint on gpsRadius (could be negative or extremely high)",
+        "🔴 Cleanup: No TTL index on createdAt (old sessions accumulate)"
+      ],
+      "summary": "Good structure but lacks TTL cleanup and has timezone/serialization concerns."
+    },
+    "models/LeaveApplication.js": {
+      "field_review": [
+        {
+          "field": "studentId, studentName, studentUSN, studentBranch, studentSemester",
+          "status": "✅ NEEDED - Student identification and context"
+        },
+        {
+          "field": "fromDate, toDate (strings YYYY-MM-DD)",
+          "status": "⚠️ SHOULD BE Date type (currently string, no timezone)"
+        },
+        {
+          "field": "reason, fileName, fileData (base64)",
+          "status": "✅ NEEDED - Leave justification"
+        },
+        {
+          "field": "status (pending|approved|rejected)",
+          "status": "✅ NEEDED - Leave workflow"
+        },
+        {
+          "field": "reviewedBy, reviewNote, reviewedAt",
+          "status": "✅ NEEDED - Audit trail"
+        },
+        {
+          "field": "forTeachers, approvedBranch",
+          "status": "⚠️ CONFUSING - Mixed business logic: forTeachers should be calculated, not stored"
+        }
+      ],
+      "issues": [
+        "❌ No validation: fromDate < toDate",
+        "❌ No validation: dates are not in past",
+        "⚠️ fileData stored as base64 string in DB (could be large)",
+        "⚠️ forTeachers is derived from status but stored redundantly",
+        "⚠️ subject field rarely used (only 'default' in uses)",
+        "⚠️ No limit on concurrent leave applications per student"
+      ],
+      "summary": "Missing crucial date validations. Dates should be Date type. Business logic mixed into model."
+    },
+    "routes/auth.js": {
+      "endpoints": [
+        {
+          "method": "POST",
+          "path": "/register",
+          "role_required": "None (public)",
+          "validation": [
+            "✅ Required fields: name, email, password, role",
+            "✅ Email format validation",
+            "✅ Password min 6 characters",
+            "✅ Admin uniqueness check",
+            "✅ Teacher/Manager self-registration prevention",
+            "✅ Max 2 parent accounts per student",
+            "✅ Email duplicate check",
+            "✅ Student USN uniqueness check"
+          ],
+          "error_handling": "✅ 400 for validation, 403 for role restriction, 500 for DB errors",
+          "issues": [
+            "⚠️ Email regex is too permissive (allows local-only emails)",
+            "⚠️ Password min length 6 is weak (should be 8+)",
+            "⚠️ No check for email verification token expiry",
+            "⚠️ Email send failure doesn't fail request (silent catch), user unaware"
+          ]
+        },
+        {
+          "method": "POST",
+          "path": "/login",
+          "role_required": "None (public)",
+          "validation": [
+            "✅ Required fields: email, password, role",
+            "✅ Email trimmed check",
+            "✅ Role validation against allowed enum",
+            "✅ User existence check",
+            "✅ Password comparison",
+            "✅ Role match verification",
+            "✅ Account active check",
+            "✅ Email verification check (student/teacher)"
+          ],
+          "error_handling": "✅ 401 for auth failures, special EMAIL_NOT_VERIFIED status",
+          "issues": [
+            "⚠️ Error 'No account found with this email' allows user enumeration",
+            "⚠️ Generic 'Invalid email or password' better but would help here too",
+            "🔴 CRITICAL: No rate limiting on failed login attempts (brute force vulnerability)"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/verify-email/:token",
+          "role_required": "None (public)",
+          "validation": "❌ No input validation on token format",
+          "error_handling": "✅ 400 for invalid token, 500 for errors",
+          "issues": [
+            "⚠️ No token expiry check (any old token works forever)",
+            "⚠️ No rate limiting (could spam verify requests)"
+          ]
+        },
+        {
+          "method": "POST",
+          "path": "/resend-verification",
+          "role_required": "None (public)",
+          "validation": [
+            "✅ Email required and trimmed",
+            "✅ User existence check",
+            "✅ Already verified check"
+          ],
+          "error_handling": "✅ Standard error codes",
+          "issues": [
+            "⚠️ No rate limiting (could spam verification emails)",
+            "⚠️ Email send failure swallowed silently"
+          ]
+        },
+        {
+          "method": "POST",
+          "path": "/forgot-password",
+          "role_required": "None (public)",
+          "validation": [
+            "✅ Email required and trimmed",
+            "✅ User existence check"
+          ],
+          "error_handling": "✅ 404 for missing email",
+          "issues": [
+            "🔴 CRITICAL: No rate limiting on forgot-password (account takeover vector)",
+            "⚠️ Reset token expiry 3600000ms (1 hour) - could be longer for legitimate users",
+            "⚠️ Email send failure swallowed silently"
+          ]
+        },
+        {
+          "method": "POST",
+          "path": "/reset-password/:token",
+          "role_required": "None (public)",
+          "validation": [
+            "✅ Token required",
+            "✅ Password required",
+            "✅ Password min 6 characters",
+            "✅ Token exists and not expired"
+          ],
+          "error_handling": "✅ 400 for validation/invalid token",
+          "issues": [
+            "⚠️ Weak password requirement (6 chars minimum)",
+            "⚠️ No rate limiting on reset attempts",
+            "⚠️ Token validity checked with $gt Date.now() but should also clear resetPasswordToken"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/me",
+          "role_required": "Any authenticated",
+          "validation": "✅ JWT verification via protect middleware",
+          "error_handling": "✅ Inherits from protect middleware",
+          "issues": [
+            "✅ No issues identified"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/manual-verify/:email",
+          "role_required": "None (public)",
+          "validation": "❌ NO VALIDATION OR AUTHENTICATION",
+          "error_handling": "❌ Generic error handling",
+          "issues": [
+            "🔴🔴🔴 CRITICAL SECURITY VULNERABILITY 🔴🔴🔴",
+            "- Anyone can verify ANY email without authentication",
+            "- No rate limiting - attacker could verify bulk emails",
+            "- Returns success/failure revealing which emails exist (enumeration)",
+            "- Comment says 'Remove this route before college deployment!!' - MUST BE REMOVED",
+            "- This is a backdoor into the system"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/admin-exists",
+          "role_required": "None (public)",
+          "validation": "❌ None",
+          "error_handling": "✅ Basic error handling",
+          "issues": [
+            "⚠️ Reveals admin existence (information disclosure)",
+            "✅ Useful for setup, probably okay to keep"
+          ]
+        }
+      ],
+      "database_operations": [
+        "User.findOne() - email lookup",
+        "User.create() - account registration",
+        "User.findOne() - token verification",
+        "User.findOneAndUpdate() - token updates",
+        "All queries properly handle errors"
+      ],
+      "critical_issues": [
+        "🔴 MANUAL VERIFY ENDPOINT IS CRITICAL SECURITY VULNERABILITY",
+        "🔴 NO RATE LIMITING on login/forgot-password/verify (brute force attacks)",
+        "⚠️ Email sent failure doesn't affect response (user doesn't know)"
+      ],
+      "summary": "Auth flow mostly solid but has critical vulnerabilities: manual verify endpoint, no rate limiting. Email verification logic is good but too permissive on failures."
+    },
+    "routes/users.js": {
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/",
+          "role_required": "admin, manager",
+          "validation": "✅ None needed - returns all users",
+          "error_handling": "✅ 500 on error",
+          "issues": [
+            "⚠️ No pagination (could be slow with large user count)",
+            "✅ Properly excludes sensitive fields"
+          ]
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "role_required": "admin, manager",
+          "validation": [
+            "✅ Email duplicate check",
+            "✅ Max 2 parent accounts per USN check"
+          ],
+          "error_handling": "✅ Handles duplicate key error",
+          "issues": [
+            "⚠️ No validation of required fields (name, email, password, role)",
+            "⚠️ Password validation not enforced (relies on schema minlength only)",
+            "⚠️ No validation that role is valid"
+          ]
+        },
+        {
+          "method": "PUT",
+          "path": "/:id",
+          "role_required": "admin, manager, teacher, student",
+          "validation": [
+            "✅ Prevents password update via this endpoint",
+            "✅ Prevents role change"
+          ],
+          "error_handling": "✅ 404 for not found, 500 for errors",
+          "issues": [
+            "⚠️ No authorization check (anyone authenticated can update anyone's profile)",
+            "⚠️ Student profile updates cascade to leave applications"
+          ]
+        },
+        {
+          "method": "DELETE",
+          "path": "/:id",
+          "role_required": "admin only",
+          "validation": "❌ No validation",
+          "error_handling": "✅ 404 for not found",
+          "issues": [
+            "⚠️ Soft delete not used (hard delete removes all history)",
+            "⚠️ No cascading delete of related data (leaves, classes, etc.)"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/student/:usn",
+          "role_required": "Any authenticated",
+          "validation": [
+            "✅ USN converted to uppercase",
+            "✅ Role check (student only)"
+          ],
+          "error_handling": "✅ 404 for not found",
+          "issues": [
+            "🔴 ROUTE DEFINED TWICE (lines ~96 and ~133)",
+            "🔴 ROUTE ORDERING ISSUE: batch/:batch route comes before this, might match",
+            "⚠️ No authorization checks (any student can find any student)"
+          ]
+        },
+        {
+          "method": "DELETE",
+          "path": "/:id/cascade",
+          "role_required": "admin only",
+          "validation": "❌ User existence checked but no other validation",
+          "error_handling": "✅ 404 if user not found",
+          "issues": [
+            "⚠️ Expensive operation: multiple database queries in sequence",
+            "⚠️ No transaction (partial deletes if failure)",
+            "⚠️ Doesn't delete leave applications",
+            "⚠️ Doesn't delete active sessions if teacher"
+          ]
+        },
+        {
+          "method": "DELETE",
+          "path": "/batch/:batch",
+          "role_required": "admin only",
+          "validation": "❌ No validation on batch parameter",
+          "error_handling": "✅ Basic error handling",
+          "issues": [
+            "⚠️ No transaction (partial deletes if failure)",
+            "⚠️ Sequential queries (slow for large batches)",
+            "⚠️ Doesn't delete parent accounts properly (could orphan parents)",
+            "⚠️ Doesn't delete leave applications for students"
+          ]
+        }
+      ],
+      "critical_issues": [
+        "🔴 DUPLICATE ROUTE: GET /student/:usn defined twice",
+        "🔴 ROUTE ORDERING: batch/:batch comes before student/:usn in code",
+        "⚠️ PUT endpoint allows unauthorized profile updates",
+        "⚠️ Cascade delete missing important relations"
+      ],
+      "summary": "Route ordering bug and duplicate definition. PUT lacks authorization. DELETE operations don't properly cascade."
+    },
+    "routes/classes.js": {
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/",
+          "role_required": "teacher, manager",
+          "validation": "✅ Filters by teacher ID and isActive=true",
+          "error_handling": "✅ 500 on error",
+          "issues": [
+            "✅ No issues identified"
+          ]
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "role_required": "teacher, manager",
+          "validation": "❌ NO VALIDATION OF REQUIRED FIELDS",
+          "error_handling": "✅ 500 on error",
+          "issues": [
+            "🔴 CRITICAL: No validation that name, subject, branch, semester, section are provided",
+            "⚠️ No validation that students array is valid format",
+            "⚠️ No validation that radius is positive",
+            "⚠️ Type defaults to 'Theory' silently"
+          ]
+        },
+        {
+          "method": "PUT",
+          "path": "/:id",
+          "role_required": "teacher, manager",
+          "validation": [
+            "✅ Checks teacher ownership (teacher can only update own)",
+            "✅ Manager can update any class"
+          ],
+          "error_handling": "✅ 404 if not authorized/found",
+          "issues": [
+            "⚠️ No validation of update fields",
+            "⚠️ Could update teacherId (authorization bypass if allowed)",
+            "⚠️ No partial update validation"
+          ]
+        },
+        {
+          "method": "DELETE",
+          "path": "/:id",
+          "role_required": "teacher, manager",
+          "validation": [
+            "✅ Teacher authorization check",
+            "✅ Manager bypass"
+          ],
+          "error_handling": "✅ 404 for not found/unauthorized",
+          "issues": [
+            "⚠️ Cascades to delete attendance (good), but no confirmation",
+            "✅ Authorization logic is okay but confusing (could be clearer)"
+          ]
+        }
+      ],
+      "critical_issues": [
+        "🔴 POST /api/classes has NO input validation"
+      ],
+      "summary": "Class creation lacks field validation. Otherwise decent authorization."
+    },
+    "routes/attendance.js": {
+      "endpoints": [
+        {
+          "method": "POST",
+          "path": "/start-session",
+          "role_required": "teacher, manager",
+          "validation": [
+            "✅ Class existence check",
+            "⚠️ OTP and QR data not validated (could be empty strings)"
+          ],
+          "error_handling": "✅ 404 if class not found, 500 on error",
+          "issues": [
+            "⚠️ Deletes existing session without warning (could lose data if teacher didn't end properly)",
+            "⚠️ OTP validation missing - should reject if empty",
+            "⚠️ gpsRadius not validated (could be negative)",
+            "⚠️ Socket.io emit happens before validation complete"
+          ]
+        },
+        {
+          "method": "PUT",
+          "path": "/update-otp",
+          "role_required": "teacher, manager",
+          "validation": [
+            "✅ Session existence check",
+            "✅ Teacher ownership verification"
+          ],
+          "error_handling": "✅ 404 if not found",
+          "issues": [
+            "⚠️ No validation that new OTP is different",
+            "⚠️ No validation that OTP is not empty"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/active-session",
+          "role_required": "Any authenticated",
+          "validation": [
+            "✅ Role-based filtering (teacher vs student)",
+            "✅ Student gets session by branch/semester/section"
+          ],
+          "error_handling": "✅ 404 if no session",
+          "issues": [
+            "⚠️ Student lookup by branch/semester could return multiple sessions (no uniqueness constraint)",
+            "⚠️ No validation of user's branch/semester/section values"
+          ]
+        },
+        {
+          "method": "POST",
+          "path": "/mark",
+          "role_required": "student only",
+          "validation": [
+            "✅ Session existence check",
+            "✅ OTP validation",
+            "✅ GPS geofencing check if enabled",
+            "✅ Branch/semester/section matching",
+            "✅ Student enrollment check",
+            "✅ Prevent double marking"
+          ],
+          "error_handling": "✅ Proper error messages for each validation",
+          "issues": [
+            "⚠️ GPS validation: No check that lat/lng are valid ranges (-90~90, -180~180)",
+            "⚠️ Distance calculation error message uses Math.round() which could show 0m at very close distances",
+            "⚠️ Branch/semester/section comparison case-insensitive but data might not be normalized"
+          ]
+        },
+        {
+          "method": "PUT",
+          "path": "/manual-toggle",
+          "role_required": "teacher, manager",
+          "validation": [
+            "✅ Input validation: sessionId, usn, status required",
+            "✅ Status enum validation (PRESENT|ABSENT)",
+            "✅ Session existence check",
+            "✅ Teacher ownership/manager authorization"
+          ],
+          "error_handling": "✅ Proper error codes",
+          "issues": [
+            "✅ No issues identified"
+          ]
+        },
+        {
+          "method": "POST",
+          "path": "/end-session",
+          "role_required": "teacher, manager",
+          "validation": [
+            "✅ Session existence check",
+            "✅ Authorization check"
+          ],
+          "error_handling": "✅ 404 if not found, 403 if not authorized",
+          "issues": [
+            "🔴 CRITICAL BUG: Line 251 uses `updatedSession.records` but `updatedSession` is undefined",
+            "   Should be `session.records` instead",
+            "🔴 CRITICAL: Allows manager to modify ANY teacher's attendance record",
+            "   Manager is authorized to end any session but creates attendance from it",
+            "⚠️ Variable name confusion: loads session but code later checks updatedSession",
+            "⚠️ if save=false, session is deleted but updatedSession doesn't exist (bug)"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/student/:usn",
+          "role_required": "Any authenticated",
+          "validation": [
+            "✅ USN converted to uppercase",
+            "✅ Finds all attendance records"
+          ],
+          "error_handling": "✅ Empty array if none found",
+          "issues": [
+            "⚠️ No authorization (any user can query any student's attendance)",
+            "⚠️ No pagination (could be slow)"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/teacher/:teacherId",
+          "role_required": "Any authenticated",
+          "validation": "❌ No validation",
+          "error_handling": "✅ Empty array if none found",
+          "issues": [
+            "⚠️ No authorization (any user can query any teacher's records)",
+            "⚠️ No pagination"
+          ]
+        },
+        {
+          "method": "PUT",
+          "path": "/:id",
+          "role_required": "teacher, manager",
+          "validation": "❌ No validation",
+          "error_handling": "✅ 404 if not found",
+          "issues": [
+            "⚠️ No authorization check (teacher can edit any attendance, not just their own)",
+            "⚠️ No validation of records array format"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/session/:sessionId/live",
+          "role_required": "Any authenticated",
+          "validation": [
+            "✅ sessionId required",
+            "✅ Session existence check"
+          ],
+          "error_handling": "✅ 400 and 404 for missing/not found",
+          "issues": [
+            "⚠️ No authorization check"
+          ]
+        },
+        {
+          "method": "POST",
+          "path": "/outside-alert",
+          "role_required": "Any authenticated",
+          "validation": [
+            "⚠️ No validation of input fields",
+            "✅ Checks session exists"
+          ],
+          "error_handling": "✅ 500 on error but returns success anyway",
+          "issues": [
+            "⚠️ No validation that distance is a number",
+            "⚠️ No validation that studentUSN is not empty",
+            "⚠️ Deduplication logic only checks if student already reported once",
+            "⚠️ Alert always added to session.outsideAlerts regardless of session found"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/outside-alerts/:sessionId",
+          "role_required": "Any authenticated",
+          "validation": [
+            "✅ sessionId required",
+            "✅ Session existence check"
+          ],
+          "error_handling": "✅ 400 and 404",
+          "issues": [
+            "⚠️ No authorization check"
+          ]
+        },
+        {
+          "method": "DELETE",
+          "path": "/:id",
+          "role_required": "teacher, manager",
+          "validation": [
+            "✅ Teacher can only delete own records"
+          ],
+          "error_handling": "✅ 404 if not found or not authorized",
+          "issues": [
+            "✅ No critical issues"
+          ]
+        }
+      ],
+      "critical_issues": [
+        "🔴 UNDEFINED VARIABLE BUG: end-session uses updatedSession which is never defined",
+        "🔴 AUTHORIZATION BYPASS: Manager can end and save ANY teacher's session",
+        "🔴 AUTHORIZATION: PUT /api/attendance/:id allows teacher to edit any attendance record"
+      ],
+      "summary": "Critical bug in end-session (undefined variable). Authorization flawed in multiple endpoints. Attendance editing unrestricted."
+    },
+    "routes/leaves.js": {
+      "endpoints": [
+        {
+          "method": "POST",
+          "path": "/",
+          "role_required": "student only",
+          "validation": [
+            "✅ Student's own ID is used",
+            "❌ NO validation of fromDate/toDate format",
+            "❌ NO validation that fromDate < toDate",
+            "❌ NO validation that dates are not in past"
+          ],
+          "error_handling": "✅ 500 on error",
+          "issues": [
+            "🔴 No date validation: student could submit leave for past dates or invalid ranges",
+            "⚠️ fileData is base64 string (could be very large - potential DoS)",
+            "⚠️ isEmailVerified not set on creation"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/my",
+          "role_required": "student only",
+          "validation": "✅ Filters by student ID",
+          "error_handling": "✅ 500 on error",
+          "issues": [
+            "✅ No issues identified"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/inbox",
+          "role_required": "manager only",
+          "validation": [
+            "✅ Filters by manager's department"
+          ],
+          "error_handling": "✅ 500 on error",
+          "issues": [
+            "⚠️ If manager has no department, returns ALL leaves (unintended behavior)"
+          ]
+        },
+        {
+          "method": "GET",
+          "path": "/notifications",
+          "role_required": "teacher only",
+          "validation": [
+            "✅ Filters approved leaves",
+            "✅ Filters by forTeachers=true",
+            "✅ Filters by approved branch match"
+          ],
+          "error_handling": "✅ 500 on error",
+          "issues": [
+            "⚠️ query logic is confusing with $or[approvedBranch, studentBranch]"
+          ]
+        },
+        {
+          "method": "PUT",
+          "path": "/:id/review",
+          "role_required": "manager only",
+          "validation": [
+            "✅ Status and reviewNote accepted",
+            "❌ NO validation that status is valid enum"
+          ],
+          "error_handling": "✅ 404 if not found",
+          "issues": [
+            "⚠️ No validation that status is one of [pending|approved|rejected]",
+            "⚠️ forTeachers automatically set to true if approved (automatic, not flexible)"
+          ]
+        },
+        {
+          "method": "DELETE",
+          "path": "/:id",
+          "role_required": "Any authenticated",
+          "validation": "❌ No authorization check",
+          "error_handling": "✅ 500 on error",
+          "issues": [
+            "🔴 CRITICAL: Anyone can delete any leave application",
+            "Only student who submitted it should be able to delete"
+          ]
+        }
+      ],
+      "critical_issues": [
+        "🔴 DELETE /api/leaves/:id has NO authorization - anyone can delete any leave",
+        "🔴 POST /api/leaves has NO date validation (can submit past/invalid dates)"
+      ],
+      "summary": "Missing critical validations: date ranges, authorization on delete. Date fields should be Date type."
+    },
+    "routes/reports.js": {
+      "endpoints": [
+        {
+          "method": "POST",
+          "path": "/send",
+          "role_required": "manager only",
+          "validation": [
+            "✅ emails array required and non-empty",
+            "❌ NO validation of email format"
+          ],
+          "error_handling": "✅ 400 if no emails, 500 on error",
+          "issues": [
+            "⚠️ No validation that email.to is valid email format",
+            "⚠️ No validation of email properties (percentage, present, absent, etc)",
+            "⚠️ Failed sends counted but not retried",
+            "⚠️ HTML injection risk if email fields not sanitized"
+          ]
+        }
+      ],
+      "database_operations": "None - email only",
+      "issues": [
+        "⚠️ No rate limiting on bulk email sends (could spam)",
+        "⚠️ No email validation",
+        "✅ Otherwise minimal and focused"
+      ],
+      "summary": "Simple implementation but lacks email validation. Only used for notifications, low risk."
+    }
+  },
+  "critical_issues": [
+    {
+      "severity": "🔴 CRITICAL",
+      "file": "routes/auth.js",
+      "line": "248",
+      "issue": "SECURITY BACKDOOR: GET /api/auth/manual-verify/:email",
+      "description": "Anyone can verify any email without authentication. No rate limiting. Allows unauthorized access to system. Comment says 'Remove before college deployment!!'",
+      "fix": "DELETE THIS ENDPOINT IMMEDIATELY. It's a critical security vulnerability."
+    },
+    {
+      "severity": "🔴 CRITICAL",
+      "file": "routes/users.js",
+      "line": "96 & 133",
+      "issue": "DUPLICATE ROUTE DEFINITION",
+      "description": "GET /api/users/student/:usn is defined twice, causing undefined behavior and routing conflicts",
+      "fix": "Remove duplicate definition. Keep one, verify route order is correct."
+    },
+    {
+      "severity": "🔴 CRITICAL",
+      "file": "routes/attendance.js",
+      "line": "251",
+      "issue": "UNDEFINED VARIABLE BUG",
+      "description": "end-session route uses 'updatedSession' which is never defined. Should be 'session'. Will crash when save=true.",
+      "fix": "Change 'updatedSession' to 'session' on lines where it's used in end-session endpoint."
+    },
+    {
+      "severity": "🔴 CRITICAL",
+      "file": "routes/attendance.js",
+      "line": "268",
+      "issue": "AUTHORIZATION BYPASS: Manager can modify any teacher's attendance",
+      "description": "Manager can end and save ANY teacher's session, creating attendance records. Should only affect own sessions.",
+      "fix": "Add check to prevent manager from creating attendance from teacher sessions, or limit manager access."
+    },
+    {
+      "severity": "🔴 CRITICAL",
+      "file": "routes/leaves.js",
+      "line": "95",
+      "issue": "NO AUTHORIZATION on DELETE",
+      "description": "DELETE /api/leaves/:id allows ANY authenticated user to delete ANY leave application",
+      "fix": "Add authorization check: only student who created it or manager can delete"
+    },
+    {
+      "severity": "🔴 CRITICAL",
+      "file": "routes/leaves.js",
+      "line": "9-15",
+      "issue": "NO DATE VALIDATION",
+      "description": "POST /api/leaves accepts future dates, past dates, and fromDate > toDate without validation",
+      "fix": "Validate: fromDate < toDate, both dates in future, proper date format"
+    },
+    {
+      "severity": "🔴 CRITICAL",
+      "file": "routes/auth.js",
+      "line": "80-140",
+      "issue": "NO RATE LIMITING",
+      "description": "No protection against brute force attacks on login, forgot-password, register endpoints. Vulnerable to credential stuffing and password guessing.",
+      "fix": "Implement rate limiting middleware (e.g., express-rate-limit): 5 attempts per 15 minutes per IP"
+    },
+    {
+      "severity": "🔴 CRITICAL",
+      "file": "routes/attendance.js",
+      "line": "230",
+      "issue": "AUTHORIZATION: Teacher can edit any attendance record",
+      "description": "PUT /api/attendance/:id allows teacher to edit any attendance, not just their own",
+      "fix": "Add check: teacher can only edit attendance for their own classes"
+    }
+  ],
+  "warnings": [
+    {
+      "severity": "⚠️ HIGH",
+      "file": "routes/classes.js",
+      "issue": "NO INPUT VALIDATION on POST",
+      "description": "Creating class has no validation. Required fields like name, subject, branch can be missing or empty",
+      "fix": "Validate all required fields before creating class"
+    },
+    {
+      "severity": "⚠️ HIGH",
+      "file": "routes/users.js",
+      "issue": "PUT /api/users/:id lacks authorization",
+      "description": "Any authenticated user can update any other user's profile",
+      "fix": "Add check: user can only update own profile, or admin/manager can update others"
+    },
+    {
+      "severity": "⚠️ HIGH",
+      "file": "models/LeaveApplication.js",
+      "issue": "Dates stored as strings instead of Date type",
+      "description": "fromDate and toDate are strings, not Date objects. No timezone handling, no date comparisons possible",
+      "fix": "Change to: fromDate: { type: Date, required: true }, toDate: { type: Date, required: true }"
+    },
+    {
+      "severity": "⚠️ HIGH",
+      "file": "models/Attendance.js",
+      "issue": "Date stored as string",
+      "description": "date field is YYYY-MM-DD string, should be Date for proper timezone handling and queries",
+      "fix": "Change date to Date type"
+    },
+    {
+      "severity": "⚠️ HIGH",
+      "file": "routes/attendance.js",
+      "issue": "No authorization on GET /student/:usn and GET /teacher/:teacherId",
+      "description": "Any user can query any student's or teacher's attendance without permission",
+      "fix": "Add role checks: student can only see own, teacher can only see own classes, admin/manager all"
+    },
+    {
+      "severity": "⚠️ MEDIUM",
+      "file": "routes/auth.js",
+      "issue": "Email verification token never expires",
+      "description": "GET /verify-email/:token works forever. No expiry check on the token",
+      "fix": "Add timestamp when token created, reject if > 24 hours old"
+    },
+    {
+      "severity": "⚠️ MEDIUM",
+      "file": "models/ActiveSession.js",
+      "issue": "No TTL cleanup for old sessions",
+      "description": "Old completed sessions accumulate in database forever. Should auto-delete after retention period",
+      "fix": "Add TTL index: activeSessionSchema.index({ createdAt: 1 }, { expireAfterSeconds: 604800 })"
+    },
+    {
+      "severity": "⚠️ MEDIUM",
+      "file": "routes/attendance.js",
+      "issue": "Start session deletes previous session silently",
+      "description": "If teacher starts new session without ending previous, old session is deleted without confirmation",
+      "fix": "Either warn teacher or prevent starting new session while one is active"
+    },
+    {
+      "severity": "⚠️ MEDIUM",
+      "file": "routes/auth.js",
+      "issue": "Email send failures silently ignored",
+      "description": "If email fails to send, user is told success but never receives verification link",
+      "fix": "Either retry email or return error so user knows there's a problem"
+    },
+    {
+      "severity": "⚠️ MEDIUM",
+      "file": "routes/users.js",
+      "issue": "DELETE /batch/:batch missing related data cleanup",
+      "description": "Batch delete doesn't delete parent accounts properly or leave applications",
+      "fix": "Delete all leave applications for students in batch before deleting students"
+    },
+    {
+      "severity": "⚠️ MEDIUM",
+      "file": "routes/attendance.js",
+      "issue": "GPS coordinates not validated",
+      "description": "In POST /mark, lat/lng received from client without validating they're in valid ranges (-90~90, -180~180)",
+      "fix": "Validate: -90 <= lat <= 90 and -180 <= lng <= 180"
+    },
+    {
+      "severity": "⚠️ MEDIUM",
+      "file": "models/LeaveApplication.js",
+      "issue": "fileData stored as base64 string in database",
+      "description": "Could be very large, slowing down database. Should use ObjectId reference to file storage",
+      "fix": "Consider using cloud storage (S3, GCS) or separate file collection"
+    }
+  ],
+  "recommendations": [
+    {
+      "priority": "IMMEDIATE",
+      "area": "Security",
+      "recommendation": "Delete manual-verify endpoint and manual testing routes before production deployment",
+      "impact": "Closes critical backdoor"
+    },
+    {
+      "priority": "IMMEDIATE",
+      "area": "Bug Fixes",
+      "recommendation": "Fix undefined 'updatedSession' variable in end-session endpoint (line 251)",
+      "impact": "Prevents crash when saving attendance"
+    },
+    {
+      "priority": "IMMEDIATE",
+      "area": "Authorization",
+      "recommendation": "Add comprehensive authorization checks to all endpoints. Document who can access what.",
+      "impact": "Prevents unauthorized data access"
+    },
+    {
+      "priority": "HIGH",
+      "area": "Rate Limiting",
+      "recommendation": "Implement rate limiting on: login (5/15min), forgot-password (3/hour), register (10/hour), verify-email (5/hour)",
+      "impact": "Prevents brute force and spam attacks"
+    },
+    {
+      "priority": "HIGH",
+      "area": "Input Validation",
+      "recommendation": "Add comprehensive input validation to all POST/PUT endpoints. Validate: required fields, data types, ranges, format.",
+      "impact": "Prevents invalid data and some injection attacks"
+    },
+    {
+      "priority": "HIGH",
+      "area": "Database",
+      "recommendation": "Convert all date strings to Date type in models (Attendance.date, LeaveApplication.fromDate/toDate)",
+      "impact": "Enables proper date queries and timezone handling"
+    },
+    {
+      "priority": "HIGH",
+      "area": "Error Handling",
+      "recommendation": "Add try-catch for all socket.io operations. Log failures. Don't silently continue on errors.",
+      "impact": "Better error visibility and debugging"
+    },
+    {
+      "priority": "MEDIUM",
+      "area": "Data Cleanup",
+      "recommendation": "Add TTL index to ActiveSession for auto-cleanup: db.activesessions.createIndex({ createdAt: 1 }, { expireAfterSeconds: 86400 })",
+      "impact": "Prevents database bloat"
+    },
+    {
+      "priority": "MEDIUM",
+      "area": "Authorization",
+      "recommendation": "Fix route ordering in users.js: specific routes before generic routes. Remove duplicates.",
+      "impact": "Prevents routing confusion"
+    },
+    {
+      "priority": "MEDIUM",
+      "area": "Logging",
+      "recommendation": "Add audit logging for: user creation/deletion, attendance modifications, leave approvals, authorization failures",
+      "impact": "Better security audit trail and debugging"
+    },
+    {
+      "priority": "MEDIUM",
+      "area": "Validation",
+      "recommendation": "Add email verification on schema level using mongoose-validator or custom validation",
+      "impact": "Prevents invalid emails in database"
+    },
+    {
+      "priority": "MEDIUM",
+      "area": "Consistency",
+      "recommendation": "Standardize date/time handling: use UTC Date objects throughout, not locale strings or date strings",
+      "impact": "Prevents timezone issues"
+    },
+    {
+      "priority": "MEDIUM",
+      "area": "Performance",
+      "recommendation": "Add pagination to GET endpoints: /api/users, /api/attendance/student/:usn, /api/attendance/teacher/:teacherId",
+      "impact": "Prevents slow queries on large datasets"
+    },
+    {
+      "priority": "LOW",
+      "area": "Code Quality",
+      "recommendation": "Use @joi or zod schemas for comprehensive input validation instead of inline checks",
+      "impact": "Cleaner, more maintainable validation code"
+    },
+    {
+      "priority": "LOW",
+      "area": "Security",
+      "recommendation": "Add CORS whitelist instead of '*', implement CSRF protection, add security headers",
+      "impact": "Better security posture"
+    }
+  ],
+  "summary": {
+    "totalFiles": 13,
+    "criticalIssues": 8,
+    "highWarnings": 12,
+    "recommendation Count": 15,
+    "overallRisk": "🔴 HIGH - Critical vulnerabilities found. Should not deploy without fixes.",
+    "keyFindings": [
+      "1. Manual verify endpoint is a security backdoor - DELETE IMMEDIATELY",
+      "2. Undefined variable bug in attendance end-session will crash",
+      "3. Multiple authorization bypass vulnerabilities (delete leaves, edit any attendance)",
+      "4. No rate limiting enables brute force attacks",
+      "5. Date validation missing on leave applications",
+      "6. Duplicate route definition causes routing issues",
+      "7. Missing input validation on multiple endpoints",
+      "8. Authorization checks inconsistent across codebase"
+    ],
+    "deploymentReadiness": "❌ NOT READY FOR PRODUCTION - Fix critical issues first",
+    "estimatedFixTime": "2-3 hours for critical issues, 6-8 hours for all warnings"
+  }
+}
