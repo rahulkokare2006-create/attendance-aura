@@ -94,7 +94,7 @@ router.get('/active-session', protect, async (req, res) => {
         isActive: true,
       });
     }
-    if (!session) return res.status(404).json({ error: 'No active session' });
+    if (!session) return res.json({ success: true, session: null });
     res.json({ success: true, session });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -435,3 +435,28 @@ router.delete('/:id', protect, restrictTo('teacher', 'manager'), async (req, res
 });
 
 module.exports = router;
+
+// Debug emit endpoint - POST /api/attendance/emit-test
+// Body: { sessionId: string, usn?: string, status?: 'PRESENT'|'ABSENT' }
+// Protected route - any authenticated user can use for quick testing in staging.
+router.post('/emit-test', protect, async (req, res) => {
+  try {
+    const { sessionId, usn, status } = req.body;
+    if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
+
+    const payload = {
+      usn: usn || 'TEST_USN',
+      status: status || 'PRESENT',
+      records: {},
+      debug: true,
+      emittedBy: req.user ? req.user.email || req.user._id : 'unknown'
+    };
+
+    // emit to all listeners
+    req.app.get('io').emit(`session:${sessionId}:update`, payload);
+    console.log(`[IO][DEBUG] Emitted session:${sessionId}:update (emit-test) ->`, payload);
+    res.json({ success: true, emitted: payload });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});

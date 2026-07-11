@@ -478,6 +478,7 @@ export const onValue = (refObj: any, callback: Function, errorCallback?: Functio
 
     const onUpdate = (data: any) => {
       const records = data.records || {};
+      console.log(`[Socket][onUpdate] session:${sessionId}:update received`, data);
       callback({
         exists: () => Object.keys(records).length > 0,
         val: () => records,
