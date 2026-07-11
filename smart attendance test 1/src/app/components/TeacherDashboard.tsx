@@ -168,7 +168,12 @@ export default function TeacherDashboard() {
         attemptedAt: alert.time || alert.markedAt || new Date().toISOString(),
       }));
       setSuspiciousAlerts(mapped);
-    } catch (err) {
+    } catch (err: any) {
+      if (err.status === 404 || String(err.message).includes('Session not found')) {
+        setOutsideAlerts([]);
+        setSuspiciousAlerts([]);
+        return;
+      }
       console.error('Failed to load outside alerts:', err);
     }
   };

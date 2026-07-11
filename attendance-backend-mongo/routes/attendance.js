@@ -412,7 +412,10 @@ router.get('/outside-alerts/:sessionId', protect, async (req, res) => {
     if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
     
     const session = await ActiveSession.findOne({ sessionId });
-    if (!session) return res.status(404).json({ error: 'Session not found' });
+    if (!session) {
+      console.log(`[outside-alerts] No active session found for sessionId=${sessionId}, returning empty alerts`);
+      return res.json({ success: true, alerts: [] });
+    }
     
     res.json({ success: true, alerts: session?.outsideAlerts || [] });
   } catch (err) {
@@ -455,6 +458,27 @@ router.post('/emit-test', protect, async (req, res) => {
     // emit to all listeners
     req.app.get('io').emit(`session:${sessionId}:update`, payload);
     console.log(`[IO][DEBUG] Emitted session:${sessionId}:update (emit-test) ->`, payload);
+    res.json({ success: true, emitted: payload });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Public debug emit endpoint (no auth) - useful for quick connectivity tests on staging
+// POST /api/attendance/emit-test-public { sessionId, usn?, status? }
+router.post('/emit-test-public', async (req, res) => {
+  try {
+    const { sessionId, usn, status } = req.body;
+    if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
+    const payload = {
+      usn: usn || 'TEST_USN',
+      status: status || 'PRESENT',
+      records: {},
+      debug: true,
+      emittedBy: 'public-debug'
+    };
+    req.app.get('io').emit(`session:${sessionId}:update`, payload);
+    console.log(`[IO][DEBUG][PUBLIC] Emitted session:${sessionId}:update ->`, payload);
     res.json({ success: true, emitted: payload });
   } catch (err) {
     res.status(500).json({ error: err.message });
