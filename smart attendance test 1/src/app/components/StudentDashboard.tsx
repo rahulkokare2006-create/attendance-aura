@@ -218,16 +218,25 @@ export default function StudentDashboard() {
 
   // Step 1: Verify OTP + session
   const handleVerifyOTP = async () => {
-    if (!otpInput || otpInput.length !== 6) { toast.error('Please enter a valid 6-digit OTP'); return; }
+    if (!otpInput || otpInput.length !== 6) { 
+      toast.error('⚠️ Please enter a valid 6-digit OTP'); 
+      return; 
+    }
     setSubmitting(true);
     try {
       const sessionSnapshot = await get(ref(rtdb, 'active_session'));
-      if (!sessionSnapshot.exists()) { toast.error('No active attendance session found'); setSubmitting(false); return; }
+      if (!sessionSnapshot.exists()) { 
+        toast.error('❌ No active attendance session found. Ask your teacher to start a session.'); 
+        setSubmitting(false); 
+        return; 
+      }
       const session = sessionSnapshot.val();
+      console.log('[OTP] Session data:', { sessionId: session.sessionId, branch: session.branch, semester: session.semester, section: session.section });
+      console.log('[OTP] Student data:', { branch: currentUser?.branch, semester: currentUser?.semester, section: currentUser?.section });
 
       // Check branch match
       if (currentUser?.branch !== session.branch) { 
-        toast.error(`❌ Branch Mismatch! Session is for ${session.branch} branch but your branch is ${currentUser?.branch}. Contact your teacher.`); 
+        toast.error(`❌ Branch Mismatch! Session is for ${session.branch} but you are in ${currentUser?.branch}. Contact your teacher.`); 
         setSubmitting(false); return; 
       }
       // Check semester match
@@ -240,9 +249,11 @@ export default function StudentDashboard() {
         toast.error(`❌ Section Mismatch! Session is for Section ${session.section} but you are in Section ${currentUser?.section}. Contact your teacher.`); 
         setSubmitting(false); return; 
       }
+      
       // Check OTP
+      console.log(`[OTP] Entered OTP: ${otpInput}, Expected: ${session.otp}`);
       if (otpInput !== session.otp) { 
-        toast.error('❌ Wrong OTP! Please check the OTP shown by your teacher and try again.'); 
+        toast.error(`❌ Wrong OTP! Please check the OTP shown by your teacher and try again.`); 
         setSubmitting(false); return; 
       }
       localStorage.setItem('current_student_session', JSON.stringify(session));
@@ -289,10 +300,25 @@ export default function StudentDashboard() {
       // Check if enrolled in this class
       const teacherId = session.teacherId;
       const classesSnapshot = await get(ref(rtdb, `teacher_classes/${teacherId}`));
-      const classes = classesSnapshot.exists() ? classesSnapshot.val() : [];
-      const currentClass = classes.find((c: any) => c.id === session.classId);
+      const classesData = classesSnapshot.exists() ? classesSnapshot.val() : {};
+      // Convert Firebase object to array if needed
+      const classes = Array.isArray(classesData) ? classesData : Object.values(classesData);
+      
+      // Try to match by classId first, then by className as fallback
+      let currentClass = classes.find((c: any) => c.id === session.classId || c._id === session.classId);
+      if (!currentClass && session.className) {
+        currentClass = classes.find((c: any) => c.name === session.className);
+      }
+      
       if (!currentClass) { 
-        toast.error('❌ Class not found! The session may have ended. Contact your teacher.'); 
+        console.error('Class lookup failed - showing diagnostic info:', { 
+          teacherId, 
+          classId: session.classId,
+          className: session.className,
+          availableClasses: classes.map((c: any) => ({ id: c.id, _id: c._id, name: c.name })),
+          session 
+        });
+        toast.error('❌ Class not found! The session may have ended or you are not enrolled. Contact your teacher.'); 
         setSubmitting(false); return; 
       }
       const isEnrolled = currentClass.students?.some((s: any) => s.usn === currentUser?.usn);
@@ -388,13 +414,16 @@ export default function StudentDashboard() {
       const session = sessionSnapshot.val();
 
       if (!session.teacherLat || !session.teacherLng || session.geoFencingEnabled === false) {
-        // GPS disabled by teacher or not set - skip GPS check
-        toast.success('Location check skipped. Proceeding...');
+        // GPS disabled by teacher or not set
+        console.log('[GPS] Geofencing disabled or not configured. Skipping GPS check.');
+        toast.success('Location check disabled. Proceeding...');
         setGpsStatus('passed');
         setTimeout(() => handleSubmitAttendance(), 1000);
         return;
       }
 
+      // Geofencing is enabled - get student location
+      console.log('[GPS] Geofencing enabled. Getting student location...');
       const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
         navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 15000, enableHighAccuracy: true })
       );
@@ -402,23 +431,46 @@ export default function StudentDashboard() {
       const distance = getDistance(pos.coords.latitude, pos.coords.longitude, session.teacherLat, session.teacherLng);
       const radius = session.gpsRadius || 50;
 
+      console.log(`[GPS] Student location: (${pos.coords.latitude}, ${pos.coords.longitude}), Distance: ${Math.round(distance)}m, Radius: ${radius}m`);
+
       if (distance <= radius) {
         setGpsStatus('passed');
-        toast.success(`GPS verified! You are ${Math.round(distance)}m from classroom ✅`);
+        toast.success(`✅ Location verified! Within ${radius}m of classroom.`);
         localStorage.setItem('student_lat', pos.coords.latitude.toString());
         localStorage.setItem('student_lng', pos.coords.longitude.toString());
         setTimeout(() => handleSubmitAttendance(), 1500);
       } else {
         setGpsStatus('failed');
-        toast.error(`You are ${Math.round(distance)}m away. Must be within ${radius}m of classroom.`);
-        // 🚨 Note: Suspicious alert shown to teacher via toast only - not stored in Firebase
+        toast.error(`❌ Location verification failed. You are ${Math.round(distance)}m away (max allowed: ${radius}m).`);
+        
+        // Report to teacher
+        fetch(`${API_URL}/api/attendance/outside-alert`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('attendance_token')}` },
+          body: JSON.stringify({
+            sessionId: session.sessionId,
+            studentName: currentUser?.name,
+            studentUSN: currentUser?.usn,
+            distance: Math.round(distance),
+            radius,
+            location: `(${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)})`,
+            time: new Date().toLocaleTimeString(),
+          })
+        }).catch(() => {});
       }
     } catch (err: any) {
+      console.error('[GPS] Error during GPS check:', err);
       if (err.code === 1) {
         setGpsStatus('failed');
-        toast.error('GPS permission denied. Please allow location access.');
+        toast.error('❌ Location permission denied. Please enable GPS in your browser settings.');
+      } else if (err.code === 2) {
+        setGpsStatus('failed');
+        toast.error('❌ Location unavailable. Please check your internet and GPS.');
+      } else if (err.code === 3) {
+        setGpsStatus('failed');
+        toast.error('❌ Location request timeout. Please try again.');
       } else {
-        toast.error('GPS check failed. Try again.');
+        toast.error('❌ GPS check failed. Please try again.');
         setGpsStatus('idle');
       }
     }
