@@ -297,34 +297,17 @@ export default function StudentDashboard() {
         }
       }
 
-      // Check if enrolled in this class
-      const teacherId = session.teacherId;
-      const classesSnapshot = await get(ref(rtdb, `teacher_classes/${teacherId}`));
-      const classesData = classesSnapshot.exists() ? classesSnapshot.val() : {};
-      // Convert Firebase object to array if needed
-      const classes = Array.isArray(classesData) ? classesData : Object.values(classesData);
-      
-      // Try to match by classId first, then by className as fallback
-      let currentClass = classes.find((c: any) => c.id === session.classId || c._id === session.classId);
-      if (!currentClass && session.className) {
-        currentClass = classes.find((c: any) => c.name === session.className);
-      }
-      
-      if (!currentClass) { 
-        console.error('Class lookup failed - showing diagnostic info:', { 
-          teacherId, 
-          classId: session.classId,
-          className: session.className,
-          availableClasses: classes.map((c: any) => ({ id: c.id, _id: c._id, name: c.name })),
-          session 
-        });
-        toast.error('❌ Class not found! The session may have ended or you are not enrolled. Contact your teacher.'); 
-        setSubmitting(false); return; 
-      }
-      const isEnrolled = currentClass.students?.some((s: any) => s.usn === currentUser?.usn);
+      // Check if enrolled in this class - Session already contains the students list from backend
+      const isEnrolled = session.students?.some((s: any) => s.usn === currentUser?.usn);
       if (!isEnrolled) { 
+        console.error('Student enrollment check failed:', { 
+          studentUSN: currentUser?.usn,
+          sessionStudents: session.students?.map((s: any) => s.usn) || [],
+          session
+        });
         toast.error(`❌ Your USN (${currentUser?.usn}) is not in this class! Ask your teacher to add you to the class student list.`); 
-        setSubmitting(false); return; 
+        setSubmitting(false); 
+        return; 
       }
 
       setSubmitting(false);

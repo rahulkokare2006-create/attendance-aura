@@ -43,6 +43,7 @@ router.post('/start-session', protect, restrictTo('teacher', 'manager'), async (
       otp, qrData: qrData || '', geoFencingEnabled: geoFencingEnabled || false,
       teacherLat: teacherLat || null, teacherLng: teacherLng || null,
       gpsRadius: gpsRadius || 50, records, markedStudents,
+      students: cls.students || [],  // Include students list for student enrollment verification
       date: now.toISOString().split('T')[0],
       startTime: now.toLocaleTimeString(),
     });
@@ -151,9 +152,8 @@ router.post('/mark', protect, restrictTo('student'), async (req, res) => {
       return res.status(400).json({ error: '⚠️ You have already marked attendance for this session!' });
     }
 
-    // Check enrolled
-    const cls = await Class.findById(session.classId);
-    const isEnrolled = cls?.students?.some(s => s.usn?.trim().toUpperCase() === usn?.trim().toUpperCase());
+    // Check enrolled - use session.students list (already includes class students)
+    const isEnrolled = session.students?.some(s => s.usn?.trim().toUpperCase() === usn?.trim().toUpperCase());
     if (!isEnrolled) return res.status(400).json({ error: `❌ Your USN (${usn}) is not in this class! Ask your teacher to add you.` });
 
     // Mark as PRESENT atomically to prevent VersionError/collisions under high concurrent student load

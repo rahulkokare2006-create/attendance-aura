@@ -15,6 +15,7 @@ const activeSessionSchema = new mongoose.Schema({
   teacherLat: { type: Number, default: null },
   teacherLng: { type: Number, default: null },
   gpsRadius: { type: Number, default: 50 },
+  students: [{ usn: String, name: String, branch: String }], // Students enrolled in this class
   records: { type: Map, of: String, default: {} }, // {usn: PRESENT/ABSENT}
   markedStudents: { type: Map, of: Object, default: {} }, // {usn: {markedAt}}
   date: { type: String, required: true },
