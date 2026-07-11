@@ -128,7 +128,7 @@ export default function StudentDashboard() {
       } catch (err) {
         console.error('[StudentDashboard] Error processing attendance history:', err);
       }
-    }, (err) => {
+    }, (err: Error) => {
       console.error('[StudentDashboard] Real-time listener error:', err);
     });
     return () => unsubscribe();

@@ -115,7 +115,7 @@ export default function ParentDashboard() {
             } catch (err) {
               console.error('[ParentDashboard] Error processing attendance history:', err);
             }
-          }, (err) => {
+          }, (err: Error) => {
             console.error('[ParentDashboard] Real-time listener error:', err);
           });
         } catch (error) {

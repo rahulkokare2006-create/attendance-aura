@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ref, set, get, update, onValue, remove, rtdb, db } from './firebaseCompat';
 import { motion, AnimatePresence } from 'motion/react';
 import { ArrowLeft, LogOut, Users, GraduationCap, UserPlus, Trash2, Edit, BookOpen, Moon, Sun, Search, ChevronLeft, ChevronRight, Save, X, HelpCircle, Mail } from 'lucide-react';
-import HelpContact from './HelpContact';
+import HelpContact from './Helpcontact';
 import { useAuth } from './AuthContext';
 import { useTheme } from './ThemeContext';
 import { toast } from 'sonner';

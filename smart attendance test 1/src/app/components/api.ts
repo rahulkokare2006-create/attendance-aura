@@ -3,7 +3,7 @@
 // ============================================
 
 const API_URL = (window as any).__API_URL__ || 
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) ||
+  (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL) ||
   '';
 
 // Get token from localStorage

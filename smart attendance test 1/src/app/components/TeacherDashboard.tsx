@@ -46,6 +46,7 @@ interface AttendanceRecord {
 
 interface AttendanceSession {
   id: string;
+  _id?: string;
   classId: string;
   className: string;
   subject: string;
@@ -626,7 +627,6 @@ export default function TeacherDashboard() {
 
     const sessionData: AttendanceSession = {
       id: sessionId,
-      sessionId,
       classId: selectedClass.id,
       className: selectedClass.name,
       subject: selectedClass.subject,
@@ -636,16 +636,13 @@ export default function TeacherDashboard() {
       records: initialRecords,
       students: selectedClass.students,
       geoFencingEnabled: actualGeoFencing,
-      teacherLat,
-      teacherLng,
-      gpsRadius,
     };
 
     // Generate QR Code
     const qrData = JSON.stringify({
       sessionId,
       otp: newOTP,
-      classId: selectedClass.id || selectedClass._id,
+      classId: selectedClass.id,
       teacherId: currentUser?.id || currentUser?._id,
       radius: selectedClass.radius,
     });
@@ -669,7 +666,7 @@ export default function TeacherDashboard() {
       await set(ref(rtdb, 'active_session'), {
         sessionId,
         otp: newOTP,
-        classId: selectedClass.id || selectedClass._id,
+        classId: selectedClass.id,
         teacherId: currentUser?.id || currentUser?._id,
         semester: selectedClass.semester,
         section: selectedClass.section,
@@ -781,9 +778,9 @@ export default function TeacherDashboard() {
     const newStatus = previousStatus === 'PRESENT' ? 'ABSENT' : 'PRESENT';
     setAttendanceRecords(prev => ({ ...prev, [usn]: newStatus }));
     try {
-      await set(ref(rtdb, `active_session_records/${attendanceSession.sessionId}/${usn}`), newStatus);
+      await set(ref(rtdb, `active_session_records/${attendanceSession.id}/${usn}`), newStatus);
       if (newStatus === 'ABSENT') {
-        await remove(ref(rtdb, `session_devices/${attendanceSession.sessionId}/${usn}`));
+        await remove(ref(rtdb, `session_devices/${attendanceSession.id}/${usn}`));
       }
     } catch (err: any) {
       console.error('Manual toggle error:', err);
@@ -874,7 +871,7 @@ export default function TeacherDashboard() {
 
     try {
       // Always get fresh records from Firebase
-      const liveRecordsSnapshot = await get(ref(rtdb, `active_session_records/${attendanceSession.sessionId}`));
+      const liveRecordsSnapshot = await get(ref(rtdb, `active_session_records/${attendanceSession.id}`));
       const liveRecords = liveRecordsSnapshot.exists() ? liveRecordsSnapshot.val() : {};
       const allStudentRecords: AttendanceRecord = {};
       attendanceSession.students.forEach(student => {
@@ -892,8 +889,8 @@ export default function TeacherDashboard() {
         // Save to each student's attendance in Firebase
         const savePromises = attendanceSession.students.map(async student => {
           const status = allStudentRecords[student.usn] || 'ABSENT';
-          await set(ref(rtdb, `student_attendance/${student.usn}/${attendanceSession.sessionId}`), {
-            id: attendanceSession.sessionId,
+          await set(ref(rtdb, `student_attendance/${student.usn}/${attendanceSession.id}`), {
+            id: attendanceSession.id,
             subject: attendanceSession.subject,
             className: attendanceSession.className,
             date: attendanceSession.date,
@@ -936,13 +933,13 @@ export default function TeacherDashboard() {
 
         // Remove in-memory references (safe operations that won't fail)
         try {
-          await remove(ref(rtdb, `active_session_records/${attendanceSession.sessionId}`));
+          await remove(ref(rtdb, `active_session_records/${attendanceSession.id}`));
         } catch (e) {
           console.error('Error removing active_session_records:', e);
         }
 
         try {
-          await remove(ref(rtdb, `session_devices/${attendanceSession.sessionId}`));
+          await remove(ref(rtdb, `session_devices/${attendanceSession.id}`));
         } catch (e) {
           console.error('Error removing session_devices:', e);
         }
