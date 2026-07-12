@@ -552,8 +552,9 @@ export const onValue = (refObj: any, callback: Function, errorCallback?: Functio
     const sessionId = path.split('/')[1];
     
     // Setup Socket.IO listener asynchronously
-    getSocket(false).then((sock: any) => {
+    getSocket(true).then((sock: any) => {
       if (!sock) return;
+      sock.emit('join-session', sessionId);
 
       // Handler for live attendance updates from backend
       const onUpdate = async (data: any) => {

@@ -72,6 +72,11 @@ const normalizeAttendanceRecords = (records: any): AttendanceRecord => {
   return normalized;
 };
 
+const getSessionId = (session: AttendanceSession | null) => {
+  if (!session) return '';
+  return String(session.sessionId || session.id || session._id || '').trim();
+};
+
 interface StudentRowProps {
   student: StudentData;
   status: 'PRESENT' | 'ABSENT';
@@ -205,6 +210,32 @@ export default function TeacherDashboard() {
   }, []);
 
   useEffect(() => {
+    if (!attendanceSession || view !== 'attendance') return;
+    const sessionId = getSessionId(attendanceSession);
+    if (!sessionId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const liveRef = ref(rtdb, `active_session_records/${sessionId}`);
+        const recordsSnap = await get(liveRef);
+        if (recordsSnap.exists()) {
+          const refreshedRecords = normalizeAttendanceRecords(recordsSnap.val());
+          setAttendanceRecords(prev => {
+            const prevJson = JSON.stringify(prev);
+            const nextJson = JSON.stringify(refreshedRecords);
+            if (prevJson === nextJson) return prev;
+            return refreshedRecords;
+          });
+        }
+      } catch (err) {
+        console.warn('[TeacherDashboard] live attendance polling failed', err);
+      }
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [attendanceSession, view]);
+
+  useEffect(() => {
     return () => {
       if (otpInterval) {
         clearInterval(otpInterval);
@@ -309,13 +340,13 @@ export default function TeacherDashboard() {
           if (session.teacherId === currentUser.id) {
             const matchingClass = clsList.find((c: any) => c.id === session.classId || c._id === session.classId);
             if (matchingClass) {
-              const restoredSessionId = session.sessionId || session.id || session._id || '';
+              const restoredSessionId = getSessionId(session as AttendanceSession);
               const restoredSession = {
                 ...session,
                 id: restoredSessionId,
                 sessionId: restoredSessionId,
                 students: matchingClass.students || [],
-              };
+              } as AttendanceSession;
 
               setSelectedClass(matchingClass);
               setAttendanceSession(restoredSession);
@@ -839,9 +870,10 @@ export default function TeacherDashboard() {
     const newStatus = previousStatus === 'PRESENT' ? 'ABSENT' : 'PRESENT';
     setAttendanceRecords(prev => ({ ...prev, [normalizedUsn]: newStatus }));
     try {
-      await set(ref(rtdb, `active_session_records/${attendanceSession.id}/${normalizedUsn}`), newStatus);
+      const sessionId = getSessionId(attendanceSession);
+      await set(ref(rtdb, `active_session_records/${sessionId}/${normalizedUsn}`), newStatus);
       if (newStatus === 'ABSENT') {
-        await remove(ref(rtdb, `session_devices/${attendanceSession.id}/${normalizedUsn}`));
+        await remove(ref(rtdb, `session_devices/${sessionId}/${normalizedUsn}`));
       }
     } catch (err: any) {
       console.error('Manual toggle error:', err);
