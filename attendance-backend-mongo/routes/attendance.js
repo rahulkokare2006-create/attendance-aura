@@ -175,11 +175,7 @@ router.post('/mark', protect, restrictTo('student'), async (req, res) => {
     }
 
     // Emit real-time update via socket.io
-    const payload = {
-      usn,
-      status: 'PRESENT',
-      records: updatedSession.records.toObject ? updatedSession.records.toObject() : Object.fromEntries(updatedSession.records || [])
-    };
+    const payload = { usn, status: 'PRESENT' };
     req.app.get('io').emit(`session:${sessionId}:update`, payload);
     console.log(`[IO] Emitted session:${sessionId}:update (mark) -> usn=${usn}`);
 

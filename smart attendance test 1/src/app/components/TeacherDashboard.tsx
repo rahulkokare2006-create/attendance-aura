@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { ref, set, get, update, onValue, remove, rtdb, db, setSessionSaveChoice } from './firebaseCompat';
 import { motion } from 'motion/react';
 import { ArrowLeft, LogOut, Upload, Users, QrCode, Plus, Moon, Sun, Save, CheckCircle, XCircle, Play, Square, Download, Clock, Edit2, Calendar, BookOpen, GraduationCap, Settings, BarChart3, HelpCircle } from 'lucide-react';
@@ -58,6 +58,56 @@ interface AttendanceSession {
   students: StudentData[];
   geoFencingEnabled?: boolean;
 }
+
+const normalizeUSN = (usn?: string) => String(usn || '').trim().toUpperCase();
+
+const normalizeAttendanceRecords = (records: any): AttendanceRecord => {
+  const normalized: AttendanceRecord = {};
+  Object.entries(records || {}).forEach(([key, value]) => {
+    const usn = normalizeUSN(key);
+    const status = String(value || '').trim().toUpperCase();
+    if (!usn) return;
+    normalized[usn] = status === 'PRESENT' ? 'PRESENT' : 'ABSENT';
+  });
+  return normalized;
+};
+
+interface StudentRowProps {
+  student: StudentData;
+  status: 'PRESENT' | 'ABSENT';
+  onToggle: (usn: string) => void;
+  isDarkMode: boolean;
+  textColor: string;
+  subTextColor: string;
+}
+
+const StudentRow = React.memo(({ student, status, onToggle, isDarkMode, textColor, subTextColor }: StudentRowProps) => (
+  <div className={`${
+      status === 'PRESENT'
+        ? isDarkMode ? 'bg-green-500/20' : 'bg-green-50'
+        : isDarkMode ? 'bg-red-500/20' : 'bg-red-50'
+    } rounded-lg p-3 flex items-center justify-between`}>
+    <div className="flex items-center gap-3">
+      {status === 'PRESENT' ? (
+        <CheckCircle className="w-5 h-5 text-green-500" />
+      ) : (
+        <XCircle className="w-5 h-5 text-red-500" />
+      )}
+      <div>
+        <p className={textColor}>{student.name}</p>
+        <p className={`${subTextColor} text-sm`}>{student.usn}</p>
+      </div>
+    </div>
+    <Button
+      size="sm"
+      onClick={() => onToggle(student.usn)}
+      className="bg-blue-500/20 hover:bg-blue-500/30 text-blue-300"
+    >
+      <Edit2 size={14} className="mr-1" />
+      Toggle
+    </Button>
+  </div>
+));
 
 export default function TeacherDashboard() {
   const { currentUser, logout, getAllUsers, getStudentByUSN, updateUser } = useAuth();
@@ -142,6 +192,21 @@ export default function TeacherDashboard() {
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord>({});
   const [otpInterval, setOtpInterval] = useState<NodeJS.Timeout | null>(null);
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceSession[]>([]);
+
+  const presentCount = useMemo(
+    () => Object.values(attendanceRecords).filter(s => s === 'PRESENT').length,
+    [attendanceRecords]
+  );
+
+  const absentCount = useMemo(
+    () => Object.values(attendanceRecords).filter(s => s === 'ABSENT').length,
+    [attendanceRecords]
+  );
+
+  const processSnapshot = useCallback((snap: any) => {
+    const liveRecords = snap.exists() ? snap.val() : {};
+    setAttendanceRecords(prev => ({ ...prev, ...normalizeAttendanceRecords(liveRecords) }));
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -284,7 +349,7 @@ export default function TeacherDashboard() {
               const liveRef = ref(rtdb, `active_session_records/${session.sessionId}`);
               get(liveRef).then(recordsSnap => {
                 if (recordsSnap.exists()) {
-                  setAttendanceRecords(recordsSnap.val());
+                  setAttendanceRecords(normalizeAttendanceRecords(recordsSnap.val()));
                 }
               });
 
@@ -298,16 +363,9 @@ export default function TeacherDashboard() {
                 });
                 toast.error(`⚠️ Suspicious activity: ${alert.studentName} (${alert.usn}) marked ${alert.type === 'duplicate_device' ? 'using a duplicate device' : 'from outside class'}!`, { duration: 8000 });
               };
-              const processSnapshot = (snap: any) => {
-                const liveRecords = snap.exists() ? snap.val() : {};
-                setAttendanceRecords(prev => {
-                  const merged = { ...prev };
-                  Object.entries(liveRecords).forEach(([usn, status]) => {
-                    merged[usn] = status as 'PRESENT' | 'ABSENT';
-                  });
-                  return merged;
-                });
-              };
+              if ((window as any).__liveAttendanceUnsubscribe) {
+                (window as any).__liveAttendanceUnsubscribe();
+              }
               const unsubscribe = onValue(liveRef, processSnapshot);
               (window as any).__liveAttendanceUnsubscribe = unsubscribe;
 
@@ -597,7 +655,7 @@ export default function TeacherDashboard() {
     // Initialize all students as ABSENT
     const initialRecords: AttendanceRecord = {};
     selectedClass.students.forEach(student => {
-      initialRecords[student.usn] = 'ABSENT';
+      initialRecords[normalizeUSN(student.usn)] = 'ABSENT';
     });
     setAttendanceRecords(initialRecords);
 
@@ -742,7 +800,7 @@ export default function TeacherDashboard() {
     // This ensures teacher sees all students from the start
     const initialFirebaseRecords: Record<string, string> = {};
     selectedClass.students.forEach((s: any) => {
-      initialFirebaseRecords[s.usn] = 'ABSENT';
+      initialFirebaseRecords[normalizeUSN(s.usn)] = 'ABSENT';
     });
     await set(ref(rtdb, `active_session_records/${sessionId}`), initialFirebaseRecords);
 
@@ -758,18 +816,9 @@ export default function TeacherDashboard() {
     };
 
     const liveRef = ref(rtdb, `active_session_records/${sessionId}`);
-    
-    const processSnapshot = (snapshot: any) => {
-      const liveRecords = snapshot.exists() ? snapshot.val() : {};
-      setAttendanceRecords(prev => {
-        const merged = { ...prev };
-        Object.entries(liveRecords).forEach(([usn, status]) => {
-          merged[usn] = status as 'PRESENT' | 'ABSENT';
-        });
-        return merged;
-      });
-    };
-    
+    if ((window as any).__liveAttendanceUnsubscribe) {
+      (window as any).__liveAttendanceUnsubscribe();
+    }
     const unsubscribe = onValue(liveRef, processSnapshot);
     
     // Suspicious alerts shown via toast only - not stored in Firebase
@@ -777,22 +826,23 @@ export default function TeacherDashboard() {
     (window as any).__liveAttendanceUnsubscribe = unsubscribe;
   };
 
-  const manualToggleAttendance = async (usn: string) => {
+  const manualToggleAttendance = useCallback(async (usn: string) => {
     if (!attendanceSession) return;
-    const previousStatus = attendanceRecords[usn] || 'ABSENT';
+    const normalizedUsn = normalizeUSN(usn);
+    const previousStatus = attendanceRecords[normalizedUsn] || 'ABSENT';
     const newStatus = previousStatus === 'PRESENT' ? 'ABSENT' : 'PRESENT';
-    setAttendanceRecords(prev => ({ ...prev, [usn]: newStatus }));
+    setAttendanceRecords(prev => ({ ...prev, [normalizedUsn]: newStatus }));
     try {
-      await set(ref(rtdb, `active_session_records/${attendanceSession.id}/${usn}`), newStatus);
+      await set(ref(rtdb, `active_session_records/${attendanceSession.id}/${normalizedUsn}`), newStatus);
       if (newStatus === 'ABSENT') {
-        await remove(ref(rtdb, `session_devices/${attendanceSession.id}/${usn}`));
+        await remove(ref(rtdb, `session_devices/${attendanceSession.id}/${normalizedUsn}`));
       }
     } catch (err: any) {
       console.error('Manual toggle error:', err);
-      setAttendanceRecords(prev => ({ ...prev, [usn]: previousStatus }));
+      setAttendanceRecords(prev => ({ ...prev, [normalizedUsn]: previousStatus }));
       toast.error(err.message || 'Failed to toggle student status!');
     }
-  };
+  }, [attendanceSession, attendanceRecords]);
 
   // Edit past attendance session
   const openEditSession = (session: AttendanceSession) => {
@@ -1505,15 +1555,11 @@ export default function TeacherDashboard() {
               </Card>
               <Card className="bg-green-500/20 border-green-500/50 p-4 text-center">
                 <p className={subTextColor + ' text-sm'}>Present</p>
-                <p className="text-3xl font-bold text-green-400">
-                  {Object.values(attendanceRecords).filter(s => s === 'PRESENT').length}
-                </p>
+                <p className="text-3xl font-bold text-green-400">{presentCount}</p>
               </Card>
               <Card className="bg-red-500/20 border-red-500/50 p-4 text-center">
                 <p className={subTextColor + ' text-sm'}>Absent</p>
-                <p className="text-3xl font-bold text-red-400">
-                  {Object.values(attendanceRecords).filter(s => s === 'ABSENT').length}
-                </p>
+                <p className="text-3xl font-bold text-red-400">{absentCount}</p>
               </Card>
             </div>
 
@@ -1522,36 +1568,21 @@ export default function TeacherDashboard() {
                 Live Attendance (Manual Override Available)
               </h3>
               <div className="space-y-2 max-h-96 overflow-y-auto">
-                {selectedClass.students.map((student) => (
-                  <div
-                    key={student.usn}
-                    className={`${
-                      attendanceRecords[student.usn] === 'PRESENT'
-                        ? isDarkMode ? 'bg-green-500/20' : 'bg-green-50'
-                        : isDarkMode ? 'bg-red-500/20' : 'bg-red-50'
-                    } rounded-lg p-3 flex items-center justify-between`}
-                  >
-                    <div className="flex items-center gap-3">
-                      {attendanceRecords[student.usn] === 'PRESENT' ? (
-                        <CheckCircle className="w-5 h-5 text-green-500" />
-                      ) : (
-                        <XCircle className="w-5 h-5 text-red-500" />
-                      )}
-                      <div>
-                        <p className={textColor}>{student.name}</p>
-                        <p className={`${subTextColor} text-sm`}>{student.usn}</p>
-                      </div>
-                    </div>
-                    <Button
-                      size="sm"
-                      onClick={() => manualToggleAttendance(student.usn)}
-                      className="bg-blue-500/20 hover:bg-blue-500/30 text-blue-300"
-                    >
-                      <Edit2 size={14} className="mr-1" />
-                      Toggle
-                    </Button>
-                  </div>
-                ))}
+                {selectedClass.students.map((student) => {
+                  const normalizedUsn = normalizeUSN(student.usn);
+                  const status = attendanceRecords[normalizedUsn] || 'ABSENT';
+                  return (
+                    <StudentRow
+                      key={normalizedUsn}
+                      student={student}
+                      status={status}
+                      onToggle={manualToggleAttendance}
+                      isDarkMode={isDarkMode}
+                      textColor={textColor}
+                      subTextColor={subTextColor}
+                    />
+                  );
+                })}
               </div>
             </div>
 

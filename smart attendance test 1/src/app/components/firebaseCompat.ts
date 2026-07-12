@@ -9,6 +9,21 @@ import { io } from 'socket.io-client';
 
 const getToken = () => localStorage.getItem('attendance_token');
 
+const normalizeRecords = (records: any) => {
+  if (!records || typeof records !== 'object') return {};
+  if (records instanceof Map) {
+    return Object.fromEntries(records);
+  }
+  const normalized: Record<string, string> = {};
+  Object.entries(records).forEach(([key, value]) => {
+    const usn = String(key || '').trim().toUpperCase();
+    const status = String(value || '').trim().toUpperCase();
+    if (!usn) return;
+    normalized[usn] = status === 'PRESENT' ? 'PRESENT' : 'ABSENT';
+  });
+  return normalized;
+};
+
 // ============================================================
 // REALTIME DATABASE COMPATIBILITY
 // ============================================================
@@ -514,8 +529,18 @@ export const onValue = (refObj: any, callback: Function, errorCallback?: Functio
   // Initial fetch
   get(refObj)
     .then(snap => {
-      console.log(`[onValue][Initial] Fetched ${path}`, snap.val());
-      callback(snap);
+      if (path.startsWith('active_session_records/')) {
+        const normalized = normalizeRecords(snap.val());
+        memStore[path] = normalized;
+        console.log(`[onValue][Initial] Fetched ${path}`, normalized);
+        callback({
+          exists: () => Object.keys(normalized).length > 0,
+          val: () => normalized,
+        });
+      } else {
+        console.log(`[onValue][Initial] Fetched ${path}`, snap.val());
+        callback(snap);
+      }
     })
     .catch(err => {
       console.error(`[onValue][Initial] Error fetching ${path}:`, err);
@@ -532,12 +557,12 @@ export const onValue = (refObj: any, callback: Function, errorCallback?: Functio
 
       // Handler for live attendance updates from backend
       const onUpdate = (data: any) => {
-        const incomingRecords = data.records && typeof data.records === 'object' ? data.records : {};
+        const incomingRecords = normalizeRecords(data.records);
         const currentRecords = memStore[path] || {};
         const mergedRecords = { ...currentRecords, ...incomingRecords };
 
         if (data.usn && data.status) {
-          mergedRecords[data.usn] = data.status;
+          mergedRecords[String(data.usn).trim().toUpperCase()] = String(data.status).trim().toUpperCase();
         }
 
         const recordsCount = Object.keys(mergedRecords).length;
