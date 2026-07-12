@@ -556,33 +556,22 @@ export const onValue = (refObj: any, callback: Function, errorCallback?: Functio
       if (!sock) return;
 
       // Handler for live attendance updates from backend
-      const onUpdate = (data: any) => {
-        const incomingRecords = normalizeRecords(data.records);
-        const currentRecords = memStore[path] || {};
-        const mergedRecords = { ...currentRecords, ...incomingRecords };
-
-        if (data.usn && data.status) {
-          mergedRecords[String(data.usn).trim().toUpperCase()] = String(data.status).trim().toUpperCase();
+      const onUpdate = async (data: any) => {
+        console.log(`[Socket][Update] session:${sessionId}:update received`, { usn: data.usn, status: data.status, records: data.records });
+        try {
+          const liveData = await attendanceAPI.getLiveRecords(sessionId);
+          const records = normalizeRecords(liveData.records);
+          const recordsCount = Object.keys(records).length;
+          console.log(`[Socket][Update] session:${sessionId}:update refreshed`, { recordsCount, recordsSample: Object.entries(records).slice(0, 5) });
+          memStore[path] = records;
+          callback({
+            exists: () => recordsCount > 0,
+            val: () => records,
+          });
+        } catch (err: any) {
+          console.warn(`[Socket][Update] failed to refresh live records for ${path}:`, err);
+          if (errorCallback) errorCallback(err);
         }
-
-        const recordsCount = Object.keys(mergedRecords).length;
-        console.log(`[Socket][Update] session:${sessionId}:update`, { usn: data.usn, status: data.status, recordsCount });
-
-        if (recordsCount === 0) {
-          console.warn(`[Socket][Update] received empty payload for ${path}, refreshing live records`);
-          get(refObj)
-            .then(callback)
-            .catch((err: any) => {
-              console.warn(`[Socket][Update] failed to refresh live records for ${path}:`, err);
-            });
-          return;
-        }
-
-        memStore[path] = mergedRecords;
-        callback({
-          exists: () => recordsCount > 0,
-          val: () => mergedRecords,
-        });
       };
 
       // Handler for suspicious activity alerts
