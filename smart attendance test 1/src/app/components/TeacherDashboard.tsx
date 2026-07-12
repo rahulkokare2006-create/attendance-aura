@@ -193,19 +193,17 @@ export default function TeacherDashboard() {
   const [otpInterval, setOtpInterval] = useState<NodeJS.Timeout | null>(null);
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceSession[]>([]);
 
-  const presentCount = useMemo(
-    () => Object.values(attendanceRecords).filter(s => s === 'PRESENT').length,
-    [attendanceRecords]
-  );
-
-  const absentCount = useMemo(
-    () => Object.values(attendanceRecords).filter(s => s === 'ABSENT').length,
-    [attendanceRecords]
-  );
+  const presentCount = Object.values(attendanceRecords).filter(s => s === 'PRESENT').length;
+  const absentCount = Object.values(attendanceRecords).filter(s => s === 'ABSENT').length;
 
   const processSnapshot = useCallback((snap: any) => {
     const liveRecords = snap.exists() ? snap.val() : {};
-    setAttendanceRecords(prev => ({ ...prev, ...normalizeAttendanceRecords(liveRecords) }));
+    console.log('[TeacherDashboard] live attendance snapshot', { exists: snap.exists?.(), val: snap.val?.() });
+    setAttendanceRecords(prev => {
+      const updated = { ...prev, ...normalizeAttendanceRecords(liveRecords) };
+      console.log('[TeacherDashboard] attendanceRecords update', { before: prev, liveRecords, after: updated });
+      return updated;
+    });
   }, []);
 
   useEffect(() => {
@@ -819,6 +817,7 @@ export default function TeacherDashboard() {
     if ((window as any).__liveAttendanceUnsubscribe) {
       (window as any).__liveAttendanceUnsubscribe();
     }
+    console.log('[TeacherDashboard] attaching live attendance listener for session', sessionId);
     const unsubscribe = onValue(liveRef, processSnapshot);
     
     // Suspicious alerts shown via toast only - not stored in Firebase
