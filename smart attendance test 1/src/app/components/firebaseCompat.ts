@@ -558,42 +558,17 @@ export const onValue = (refObj: any, callback: Function, errorCallback?: Functio
 
       // Handler for live attendance updates from backend
       const onUpdate = async (data: any) => {
-        console.log(`[Socket][Update] session:${sessionId}:update received`, { usn: data.usn, status: data.status, records: data.records });
+        console.log(`[Socket][Update] session:${sessionId}:update received`, { usn: data?.usn, status: data?.status });
         try {
-          const liveData = await attendanceAPI.getLiveRecords(sessionId);
-          const records = normalizeRecords(liveData.records);
-          const recordsCount = Object.keys(records).length;
-          const currentRecords = memStore[path] || {};
-
-          if (recordsCount === 0 && Object.keys(currentRecords).length > 0) {
-            console.warn(`[Socket][Update] live fetch returned empty for ${path}, preserving current cached state`);
-            if (data.usn && data.status) {
-              const normalizedUsn = String(data.usn || '').trim().toUpperCase();
-              if (normalizedUsn) {
-                currentRecords[normalizedUsn] = String(data.status || '').trim().toUpperCase() === 'PRESENT' ? 'PRESENT' : 'ABSENT';
-              }
-            }
-            callback({
-              exists: () => Object.keys(currentRecords).length > 0,
-              val: () => currentRecords,
-            });
-            return;
-          }
-
-          console.log(`[Socket][Update] session:${sessionId}:update refreshed`, { recordsCount, recordsSample: Object.entries(records).slice(0, 5) });
+          const live = await attendanceAPI.getLiveRecords(sessionId);
+          const records = normalizeRecords(live.records);
           memStore[path] = records;
           callback({
-            exists: () => recordsCount > 0,
-            val: () => records,
+            exists: () => Object.keys(records).length > 0,
+            val: () => records
           });
         } catch (err: any) {
           console.warn(`[Socket][Update] failed to refresh live records for ${path}:`, err);
-          if (Object.keys(memStore[path] || {}).length > 0) {
-            callback({
-              exists: () => true,
-              val: () => memStore[path],
-            });
-          }
           if (errorCallback) errorCallback(err);
         }
       };

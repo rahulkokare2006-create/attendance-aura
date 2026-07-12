@@ -219,7 +219,16 @@ router.put('/manual-toggle', protect, restrictTo('teacher', 'manager'), async (r
     if (!updatedSession) return res.status(404).json({ error: 'Session not found' });
     
     // Emit via socket.io - convert Map to object properly
-    const recordsObj = updatedSession.records.toObject ? updatedSession.records.toObject() : Object.fromEntries(updatedSession.records || []);
+    const recordsObj = {};
+    if (updatedSession.records) {
+      if (typeof updatedSession.records.forEach === 'function') {
+        updatedSession.records.forEach((value, key) => {
+          recordsObj[key] = value;
+        });
+      } else {
+        Object.assign(recordsObj, updatedSession.records);
+      }
+    }
     req.app.get('io').emit(`session:${sessionId}:update`, { usn, status, records: recordsObj });
     res.json({ success: true, message: `✅ Marked ${usn} as ${status}` });
   } catch (err) {
@@ -360,7 +369,16 @@ router.get('/session/:sessionId/live', protect, async (req, res) => {
     }
     
     // Convert Map to object properly
-    const recordsObj = session.records.toObject ? session.records.toObject() : Object.fromEntries(session.records || []);
+    const recordsObj = {};
+    if (session.records) {
+      if (typeof session.records.forEach === 'function') {
+        session.records.forEach((value, key) => {
+          recordsObj[key] = value;
+        });
+      } else {
+        Object.assign(recordsObj, session.records);
+      }
+    }
     res.json({ success: true, records: recordsObj });
   } catch (err) {
     console.error('getLiveRecords error:', err);
