@@ -196,11 +196,14 @@ export default function TeacherDashboard() {
     }
   }, [qrCode]);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord>({});
+  const [isAttendanceLoaded, setIsAttendanceLoaded] = useState(false);
   const [otpInterval, setOtpInterval] = useState<NodeJS.Timeout | null>(null);
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceSession[]>([]);
 
   const presentCount = Object.values(attendanceRecords).filter(s => s === 'PRESENT').length;
-  const absentCount = Object.values(attendanceRecords).filter(s => s === 'ABSENT').length;
+  const absentCount = Object.keys(attendanceRecords).length > 0
+    ? Object.values(attendanceRecords).filter(s => s === 'ABSENT').length
+    : (selectedClass ? selectedClass.students.length : 0);
 
   const processSnapshot = useCallback((snap: any) => {
     const liveRecords = snap.exists() ? snap.val() : {};
@@ -208,6 +211,7 @@ export default function TeacherDashboard() {
     const normalizedRecords = normalizeAttendanceRecords(liveRecords);
     console.log('[TeacherDashboard] attendanceRecords replace', { liveRecords, normalizedRecords });
     setAttendanceRecords(normalizedRecords);
+    setIsAttendanceLoaded(true);
   }, []);
 
   useEffect(() => {
@@ -356,6 +360,7 @@ export default function TeacherDashboard() {
               // Initialize attendance state from restored active session payload
               if (session.records) {
                 setAttendanceRecords(normalizeAttendanceRecords(session.records));
+                setIsAttendanceLoaded(true);
               }
 
               // Regenerate QR code URL
@@ -387,6 +392,7 @@ export default function TeacherDashboard() {
               get(liveRef).then(recordsSnap => {
                 if (recordsSnap.exists()) {
                   setAttendanceRecords(normalizeAttendanceRecords(recordsSnap.val()));
+                  setIsAttendanceLoaded(true);
                 }
               });
 
@@ -695,6 +701,7 @@ export default function TeacherDashboard() {
       initialRecords[normalizeUSN(student.usn)] = 'ABSENT';
     });
     setAttendanceRecords(initialRecords);
+    setIsAttendanceLoaded(true);
 
     const newOTP = generateOTP();
     const sessionId = Date.now().toString();
@@ -1045,6 +1052,7 @@ export default function TeacherDashboard() {
         setQrCode('');
         setOtp('');
         setAttendanceRecords({});
+        setIsAttendanceLoaded(false);
       } catch (err: any) {
         console.error('Cleanup error in endAttendanceSession:', err);
         // Continue anyway - don't let cleanup errors prevent state updates
@@ -1055,6 +1063,7 @@ export default function TeacherDashboard() {
         setQrCode('');
         setOtp('');
         setAttendanceRecords({});
+        setIsAttendanceLoaded(false);
       }
     }
   };
@@ -1594,11 +1603,19 @@ export default function TeacherDashboard() {
               </Card>
               <Card className="bg-green-500/20 border-green-500/50 p-4 text-center">
                 <p className={subTextColor + ' text-sm'}>Present</p>
-                <p className="text-3xl font-bold text-green-400">{presentCount}</p>
+                <p className="text-3xl font-bold text-green-400">
+                  {isAttendanceLoaded ? presentCount : (
+                    <span className="text-xl font-normal text-white/50">Loading...</span>
+                  )}
+                </p>
               </Card>
               <Card className="bg-red-500/20 border-red-500/50 p-4 text-center">
                 <p className={subTextColor + ' text-sm'}>Absent</p>
-                <p className="text-3xl font-bold text-red-400">{absentCount}</p>
+                <p className="text-3xl font-bold text-red-400">
+                  {isAttendanceLoaded ? absentCount : (
+                    <span className="text-xl font-normal text-white/50">Loading...</span>
+                  )}
+                </p>
               </Card>
             </div>
 
