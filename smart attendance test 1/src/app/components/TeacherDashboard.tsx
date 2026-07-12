@@ -309,12 +309,16 @@ export default function TeacherDashboard() {
           if (session.teacherId === currentUser.id) {
             const matchingClass = clsList.find((c: any) => c.id === session.classId || c._id === session.classId);
             if (matchingClass) {
-              setSelectedClass(matchingClass);
-              setAttendanceSession({
+              const restoredSessionId = session.sessionId || session.id || session._id || '';
+              const restoredSession = {
                 ...session,
-                id: session.sessionId || session.id,
+                id: restoredSessionId,
+                sessionId: restoredSessionId,
                 students: matchingClass.students || [],
-              });
+              };
+
+              setSelectedClass(matchingClass);
+              setAttendanceSession(restoredSession);
               setOtp(session.otp);
 
               // Initialize attendance state from restored active session payload
@@ -324,7 +328,7 @@ export default function TeacherDashboard() {
 
               // Regenerate QR code URL
               const qrData = JSON.stringify({
-                sessionId: session.sessionId,
+                sessionId: restoredSessionId,
                 otp: session.otp,
                 classId: matchingClass.id,
                 teacherId: currentUser?.id,
@@ -337,7 +341,7 @@ export default function TeacherDashboard() {
 
               // Load persisted outside alerts for this session
               try {
-                const alertsData = await attendanceAPI.getOutsideAlerts(session.sessionId);
+                const alertsData = await attendanceAPI.getOutsideAlerts(restoredSessionId);
                 if (alertsData.alerts) {
                   setOutsideAlerts(alertsData.alerts);
                   setSuspiciousAlerts(prev => [...alertsData.alerts, ...prev]);
@@ -347,7 +351,7 @@ export default function TeacherDashboard() {
               }
 
               // Pre-fill initial records from active_session_records
-              const liveRef = ref(rtdb, `active_session_records/${session.sessionId}`);
+              const liveRef = ref(rtdb, `active_session_records/${restoredSessionId}`);
               get(liveRef).then(recordsSnap => {
                 if (recordsSnap.exists()) {
                   setAttendanceRecords(normalizeAttendanceRecords(recordsSnap.val()));
