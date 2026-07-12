@@ -31,6 +31,7 @@ const normalizeRecords = (records: any) => {
 // Socket.io connection for real-time
 let socket: any = null;
 let socketConnected = false;
+let socketResolveFn: any = null;
 let socketConnectPromise: any = null;
 
 const getSocket = async (waitForConnection = true) => {
@@ -49,10 +50,11 @@ const getSocket = async (waitForConnection = true) => {
     socket.on('connect', () => {
       socketConnected = true;
       console.log('[Socket] ✅ Connected', socket.id, 'to', API_URL);
-      if (socketConnectPromise) {
-        socketConnectPromise.resolve();
-        socketConnectPromise = null;
+      if (socketResolveFn) {
+        socketResolveFn();
+        socketResolveFn = null;
       }
+      socketConnectPromise = null;
     });
 
     socket.on('connect_error', (err: any) => {
@@ -77,17 +79,24 @@ const getSocket = async (waitForConnection = true) => {
         if (socketConnected) {
           resolve();
         } else {
+          socketResolveFn = resolve;
           // Wait up to 5 seconds for connection
           const timer = setTimeout(() => {
             console.warn('[Socket] Connection timeout - proceeding without waiting');
-            resolve();
+            if (socketResolveFn) {
+              socketResolveFn();
+              socketResolveFn = null;
+            }
           }, 5000);
 
           const checkConnection = setInterval(() => {
             if (socketConnected) {
               clearTimeout(timer);
               clearInterval(checkConnection);
-              resolve();
+              if (socketResolveFn) {
+                socketResolveFn();
+                socketResolveFn = null;
+              }
             }
           }, 100);
         }

@@ -218,15 +218,27 @@ router.put('/manual-toggle', protect, restrictTo('teacher', 'manager'), async (r
     );
     if (!updatedSession) return res.status(404).json({ error: 'Session not found' });
     
-    // Emit via socket.io - convert Map to object properly
+    // Emit via socket.io - convert Map to object properly and normalize keys
     const recordsObj = {};
     if (updatedSession.records) {
       if (typeof updatedSession.records.forEach === 'function') {
         updatedSession.records.forEach((value, key) => {
-          recordsObj[key] = value;
+          const normKey = String(key || '').trim().toUpperCase();
+          if (recordsObj[normKey] === 'PRESENT' || value === 'PRESENT') {
+            recordsObj[normKey] = 'PRESENT';
+          } else {
+            recordsObj[normKey] = 'ABSENT';
+          }
         });
       } else {
-        Object.assign(recordsObj, updatedSession.records);
+        Object.entries(updatedSession.records).forEach(([key, value]) => {
+          const normKey = String(key || '').trim().toUpperCase();
+          if (recordsObj[normKey] === 'PRESENT' || value === 'PRESENT') {
+            recordsObj[normKey] = 'PRESENT';
+          } else {
+            recordsObj[normKey] = 'ABSENT';
+          }
+        });
       }
     }
     req.app.get('io').emit(`session:${sessionId}:update`, { usn, status, records: recordsObj });
@@ -255,12 +267,47 @@ router.post('/end-session', protect, restrictTo('teacher', 'manager'), async (re
     if (save) {
       const cls = await Class.findById(session.classId);
       const records = (cls?.students || []).map(student => {
-        const status = session.records.get ? session.records.get(student.usn) : session.records[student.usn];
+        let status = 'ABSENT';
+        let markedAt = null;
+        const studentUsn = String(student.usn || '').trim().toUpperCase();
+        
+        if (session.records) {
+          if (typeof session.records.forEach === 'function') {
+            session.records.forEach((v, k) => {
+              if (String(k || '').trim().toUpperCase() === studentUsn) {
+                if (v === 'PRESENT') status = 'PRESENT';
+              }
+            });
+          } else {
+            Object.entries(session.records).forEach(([k, v]) => {
+              if (String(k || '').trim().toUpperCase() === studentUsn) {
+                if (v === 'PRESENT') status = 'PRESENT';
+              }
+            });
+          }
+        }
+
+        if (session.markedStudents) {
+          if (typeof session.markedStudents.forEach === 'function') {
+            session.markedStudents.forEach((v, k) => {
+              if (String(k || '').trim().toUpperCase() === studentUsn) {
+                markedAt = v?.markedAt || null;
+              }
+            });
+          } else {
+            Object.entries(session.markedStudents).forEach(([k, v]) => {
+              if (String(k || '').trim().toUpperCase() === studentUsn) {
+                markedAt = v?.markedAt || null;
+              }
+            });
+          }
+        }
+
         return {
           usn: student.usn,
           studentName: student.name,
-          status: status || 'ABSENT',
-          markedAt: (session.markedStudents.get ? session.markedStudents.get(student.usn) : session.markedStudents[student.usn])?.markedAt || null
+          status,
+          markedAt
         };
       });
 
@@ -368,15 +415,27 @@ router.get('/session/:sessionId/live', protect, async (req, res) => {
       return res.json({ success: true, records: {} });
     }
     
-    // Convert Map to object properly
+    // Convert Map to object properly and normalize keys
     const recordsObj = {};
     if (session.records) {
       if (typeof session.records.forEach === 'function') {
         session.records.forEach((value, key) => {
-          recordsObj[key] = value;
+          const normKey = String(key || '').trim().toUpperCase();
+          if (recordsObj[normKey] === 'PRESENT' || value === 'PRESENT') {
+            recordsObj[normKey] = 'PRESENT';
+          } else {
+            recordsObj[normKey] = 'ABSENT';
+          }
         });
       } else {
-        Object.assign(recordsObj, session.records);
+        Object.entries(session.records).forEach(([key, value]) => {
+          const normKey = String(key || '').trim().toUpperCase();
+          if (recordsObj[normKey] === 'PRESENT' || value === 'PRESENT') {
+            recordsObj[normKey] = 'PRESENT';
+          } else {
+            recordsObj[normKey] = 'ABSENT';
+          }
+        });
       }
     }
     res.json({ success: true, records: recordsObj });
