@@ -15,25 +15,72 @@ const getToken = () => localStorage.getItem('attendance_token');
 
 // Socket.io connection for real-time
 let socket: any = null;
-const listeners: Map<string, Function[]> = new Map();
+let socketConnected = false;
+let socketConnectPromise: any = null;
 
-const getSocket = () => {
+const getSocket = async (waitForConnection = true) => {
   if (!socket) {
+    // Create Socket.IO connection
     socket = io(API_URL, {
       auth: { token: getToken() },
       transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: Infinity,
     });
-    // Diagnostic logging
+
+    // Setup connection handlers
     socket.on('connect', () => {
-      console.log('[Socket] connected', socket.id, 'to', API_URL);
+      socketConnected = true;
+      console.log('[Socket] ✅ Connected', socket.id, 'to', API_URL);
+      if (socketConnectPromise) {
+        socketConnectPromise.resolve();
+        socketConnectPromise = null;
+      }
     });
+
     socket.on('connect_error', (err: any) => {
-      console.error('[Socket] connect_error', err?.message || err);
+      socketConnected = false;
+      console.error('[Socket] ❌ Connection error:', err?.message || err);
     });
+
     socket.on('disconnect', (reason: any) => {
-      console.log('[Socket] disconnected', reason);
+      socketConnected = false;
+      console.warn('[Socket] ⚠️ Disconnected:', reason);
+    });
+
+    socket.on('error', (err: any) => {
+      console.error('[Socket] 🔴 Error:', err?.message || err);
     });
   }
+
+  // If connection is not established and we're waiting for it, wait for it
+  if (waitForConnection && !socketConnected) {
+    if (!socketConnectPromise) {
+      socketConnectPromise = new Promise((resolve) => {
+        if (socketConnected) {
+          resolve();
+        } else {
+          // Wait up to 5 seconds for connection
+          const timer = setTimeout(() => {
+            console.warn('[Socket] Connection timeout - proceeding without waiting');
+            resolve();
+          }, 5000);
+
+          const checkConnection = setInterval(() => {
+            if (socketConnected) {
+              clearTimeout(timer);
+              clearInterval(checkConnection);
+              resolve();
+            }
+          }, 100);
+        }
+      });
+    }
+    await socketConnectPromise;
+  }
+
   return socket;
 };
 
@@ -459,69 +506,120 @@ export const remove = async (refObj: any) => {
   }
 };
 
-// onValue() - real-time listener
+// onValue() - real-time listener with Socket.IO support
 export const onValue = (refObj: any, callback: Function, errorCallback?: Function) => {
   const path: string = refObj.path || refObj;
+  let unsubscribeFunctions: (() => void)[] = [];
 
   // Initial fetch
-  get(refObj).then(snap => callback(snap)).catch(err => {
-    if (errorCallback) errorCallback(err);
-  });
+  get(refObj)
+    .then(snap => {
+      console.log(`[onValue][Initial] Fetched ${path}`, snap.val());
+      callback(snap);
+    })
+    .catch(err => {
+      console.error(`[onValue][Initial] Error fetching ${path}:`, err);
+      if (errorCallback) errorCallback(err);
+    });
 
-  // For active session records - poll every 2 seconds
+  // For active session records - use Socket.IO real-time updates
   if (path.startsWith('active_session_records/')) {
     const sessionId = path.split('/')[1];
-    const sock = getSocket();
+    
+    // Setup Socket.IO listener asynchronously
+    getSocket(false).then((sock: any) => {
+      if (!sock) return;
 
-    // Initial fetch to load currently marked students
-    get(refObj).then(snap => callback(snap)).catch(() => {});
+      // Handler for live attendance updates from backend
+      const onUpdate = (data: any) => {
+        const records = data.records || {};
+        console.log(`[Socket][Update] session:${sessionId}:update`, { usn: data.usn, status: data.status, recordsCount: Object.keys(records).length });
+        
+        // Update in-memory store
+        memStore[path] = records;
+        
+        callback({
+          exists: () => Object.keys(records).length > 0,
+          val: () => records,
+        });
+      };
 
-    const onUpdate = (data: any) => {
-      const records = data.records || {};
-      console.log(`[Socket][onUpdate] session:${sessionId}:update received`, data);
-      callback({
-        exists: () => Object.keys(records).length > 0,
-        val: () => records,
+      // Handler for suspicious activity alerts
+      const onAlert = (alertData: any) => {
+        console.log(`[Socket][Alert] session:${sessionId}:outside-alert`, alertData);
+        if (typeof (window as any).__onOutsideAlert === 'function') {
+          (window as any).__onOutsideAlert(alertData);
+        }
+      };
+
+      // Register socket listeners
+      sock.on(`session:${sessionId}:update`, onUpdate);
+      sock.on(`session:${sessionId}:outside-alert`, onAlert);
+
+      console.log(`[Socket][Subscribe] Registered listeners for session:${sessionId}`);
+
+      // Store unsubscribe functions
+      unsubscribeFunctions.push(() => {
+        sock.off(`session:${sessionId}:update`, onUpdate);
+        sock.off(`session:${sessionId}:outside-alert`, onAlert);
+        console.log(`[Socket][Unsubscribe] Removed listeners for session:${sessionId}`);
       });
-    };
+    }).catch(err => {
+      console.warn(`[Socket][Error] Failed to setup Socket.IO listener for ${path}:`, err);
+    });
 
-    const onAlert = (alertData: any) => {
-      if (typeof (window as any).__onOutsideAlert === 'function') {
-        (window as any).__onOutsideAlert(alertData);
-      }
-    };
-
-    sock.on(`session:${sessionId}:update`, onUpdate);
-    sock.on(`session:${sessionId}:outside-alert`, onAlert);
-
-    // Return unsubscribe function
+    // Return cleanup function
     return () => {
-      sock.off(`session:${sessionId}:update`, onUpdate);
-      sock.off(`session:${sessionId}:outside-alert`, onAlert);
+      unsubscribeFunctions.forEach(fn => fn());
     };
   }
 
-  // For student attendance - poll every 3 seconds for faster updates after session ends
+  // For student attendance - use API polling with smarter debouncing
   if (path.startsWith('student_attendance/')) {
     let lastValStr = '';
-    const interval = setInterval(async () => {
+    let pollTimer: any = null;
+    
+    const poll = async () => {
       try {
         const snap = await get(refObj);
         const val = snap.val();
-        const valStr = JSON.stringify(val);
+        const valStr = JSON.stringify(val || {});
+        
+        // Only callback if data actually changed
         if (valStr !== lastValStr) {
           lastValStr = valStr;
+          console.log(`[Poll][Update] ${path} - records changed`);
           callback(snap);
         }
       } catch (err) {
-        console.warn(`[firebaseCompat.onValue] Poll error for ${path}:`, err);
-        // Continue polling despite errors
+        console.warn(`[Poll][Error] for ${path}:`, err?.message || err);
+        if (errorCallback) errorCallback(err);
       }
-    }, 3000);
-    return () => clearInterval(interval);
+    };
+
+    // Initial poll
+    poll();
+    
+    // Set up polling interval (check every 2 seconds)
+    pollTimer = setInterval(poll, 2000);
+    
+    unsubscribeFunctions.push(() => {
+      if (pollTimer) clearInterval(pollTimer);
+      console.log(`[Poll][Cleanup] Stopped polling for ${path}`);
+    });
+
+    return () => {
+      unsubscribeFunctions.forEach(fn => fn());
+    };
   }
 
-  // Default - no real-time, just one-time
+  // For teacher settings and other static paths - no real-time
+  if (path.startsWith('teacher_settings/') || path.startsWith('teacher_classes/') || path === 'leave_applications' || path === 'leave_notifications') {
+    // One-time fetch only - these don't need real-time updates in this context
+    return () => {};
+  }
+
+  // Default - return no-op unsubscribe
   return () => {};
 };
 
