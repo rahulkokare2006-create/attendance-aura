@@ -47,6 +47,7 @@ interface AttendanceRecord {
 interface AttendanceSession {
   id: string;
   _id?: string;
+  sessionId?: string;
   classId: string;
   className: string;
   subject: string;
