@@ -15,7 +15,7 @@ import { Label } from './ui/label';
 type Mode = 'login' | 'signup' | 'forgot-password' | 'verify-email' | 'verify-email-token' | 'reset-password-token';
 
 export default function Login() {
-  const { login, signup, isAdminExists, forgotPassword, resendVerificationEmail, verificationLink } = useAuth();
+  const { login, signup, isAdminExists, forgotPassword, resendVerificationEmail } = useAuth();
   const { isDarkMode } = useTheme();
   const [mode, setMode] = useState<Mode>('login');
   const [showPassword, setShowPassword] = useState(false);
@@ -310,21 +310,6 @@ export default function Login() {
                       Open your email, click the verify link, then come back here to login.
                     </p>
                   </div>
-                  {verificationLink && (
-                    <div className={`${isDarkMode ? 'bg-white/5 border-white/10' : 'bg-gray-50 border-gray-200'} border rounded-2xl p-4 text-left`}> 
-                      <p className={`text-sm font-medium ${textColor} mb-2`}>Direct verification link (use if email is delayed):</p>
-                      <a href={verificationLink} target="_blank" rel="noopener noreferrer" className="text-sm break-all text-blue-600 hover:text-blue-800 underline">
-                        {verificationLink}
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() => navigator.clipboard.writeText(verificationLink)}
-                        className="mt-3 px-3 py-2 rounded-lg border text-sm text-gray-700 hover:bg-gray-100"
-                      >
-                        Copy Link
-                      </button>
-                    </div>
-                  )}
                   <Button onClick={() => { setMode('login'); }}
                     className="w-full bg-gradient-to-r from-blue-500 to-purple-600 py-5 text-base font-semibold">
                     <LogIn className="w-5 h-5 mr-2" /> I've Verified — Go to Login ✅

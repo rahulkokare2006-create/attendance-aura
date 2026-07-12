@@ -532,15 +532,31 @@ export const onValue = (refObj: any, callback: Function, errorCallback?: Functio
 
       // Handler for live attendance updates from backend
       const onUpdate = (data: any) => {
-        const records = data.records || {};
-        console.log(`[Socket][Update] session:${sessionId}:update`, { usn: data.usn, status: data.status, recordsCount: Object.keys(records).length });
-        
-        // Update in-memory store
-        memStore[path] = records;
-        
+        const incomingRecords = data.records && typeof data.records === 'object' ? data.records : {};
+        const currentRecords = memStore[path] || {};
+        const mergedRecords = { ...currentRecords, ...incomingRecords };
+
+        if (data.usn && data.status) {
+          mergedRecords[data.usn] = data.status;
+        }
+
+        const recordsCount = Object.keys(mergedRecords).length;
+        console.log(`[Socket][Update] session:${sessionId}:update`, { usn: data.usn, status: data.status, recordsCount });
+
+        if (recordsCount === 0) {
+          console.warn(`[Socket][Update] received empty payload for ${path}, refreshing live records`);
+          get(refObj)
+            .then(callback)
+            .catch((err: any) => {
+              console.warn(`[Socket][Update] failed to refresh live records for ${path}:`, err);
+            });
+          return;
+        }
+
+        memStore[path] = mergedRecords;
         callback({
-          exists: () => Object.keys(records).length > 0,
-          val: () => records,
+          exists: () => recordsCount > 0,
+          val: () => mergedRecords,
         });
       };
 

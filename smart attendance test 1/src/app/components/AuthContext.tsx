@@ -28,7 +28,6 @@ export interface User {
 
 interface AuthContextType {
   currentUser: User | null;
-  verificationLink: string;
   login: (email: string, password: string, role: UserRole) => Promise<any>;
   logout: () => void;
   signup: (userData: any) => Promise<boolean>;
@@ -59,7 +58,6 @@ const normalizeUser = (u: any): User => ({
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [verificationLink, setVerificationLink] = useState<string>('');
 
   // Setup error logger
   useEffect(() => {
@@ -73,10 +71,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const token = localStorage.getItem('attendance_token');
     const savedUser = localStorage.getItem('attendance_user');
-    const savedVerificationLink = localStorage.getItem('attendance_verification_link');
-    if (savedVerificationLink) {
-      setVerificationLink(savedVerificationLink);
-    }
     if (token && savedUser) {
       try {
         setCurrentUser(JSON.parse(savedUser));
@@ -130,18 +124,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('teacher_otp');
     localStorage.removeItem('teacher_qrcode');
     setCurrentUser(null);
-    setVerificationLink('');
-    localStorage.removeItem('attendance_verification_link');
   };
 
   const signup = async (userData: any): Promise<boolean> => {
     try {
       const data = await authAPI.register(userData);
       const needsVerify = ['student', 'teacher'].includes(userData.role);
-      if (data?.verifyUrl) {
-        setVerificationLink(data.verifyUrl);
-        localStorage.setItem('attendance_verification_link', data.verifyUrl);
-      }
       toast.success(needsVerify
         ? 'Account created! Please check your email to verify.'
         : 'Account created successfully!');
@@ -244,11 +232,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const userEmail = email || currentUser?.email;
       if (!userEmail) { toast.error('No email provided'); return false; }
-      const data = await authAPI.resendVerification(userEmail);
-      if (data?.verifyUrl) {
-        setVerificationLink(data.verifyUrl);
-        localStorage.setItem('attendance_verification_link', data.verifyUrl);
-      }
+      await authAPI.resendVerification(userEmail);
       toast.success('Verification email sent! Check your inbox.');
       return true;
     } catch (error: any) {
@@ -259,7 +243,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <AuthContext.Provider value={{
-      currentUser, verificationLink, login, logout, signup, isAdminExists,
+      currentUser, login, logout, signup, isAdminExists,
       getAllUsers, createTeacherAccount, deleteUser, deleteUserCascade,
       deleteBatch, updateUser, getStudentByUSN, forgotPassword, resendVerificationEmail,
     }}>
