@@ -199,11 +199,9 @@ export default function TeacherDashboard() {
   const processSnapshot = useCallback((snap: any) => {
     const liveRecords = snap.exists() ? snap.val() : {};
     console.log('[TeacherDashboard] live attendance snapshot', { exists: snap.exists?.(), val: snap.val?.() });
-    setAttendanceRecords(prev => {
-      const updated = { ...prev, ...normalizeAttendanceRecords(liveRecords) };
-      console.log('[TeacherDashboard] attendanceRecords update', { before: prev, liveRecords, after: updated });
-      return updated;
-    });
+    const normalizedRecords = normalizeAttendanceRecords(liveRecords);
+    console.log('[TeacherDashboard] attendanceRecords replace', { liveRecords, normalizedRecords });
+    setAttendanceRecords(normalizedRecords);
   }, []);
 
   useEffect(() => {
@@ -318,6 +316,11 @@ export default function TeacherDashboard() {
                 students: matchingClass.students || [],
               });
               setOtp(session.otp);
+
+              // Initialize attendance state from restored active session payload
+              if (session.records) {
+                setAttendanceRecords(normalizeAttendanceRecords(session.records));
+              }
 
               // Regenerate QR code URL
               const qrData = JSON.stringify({
