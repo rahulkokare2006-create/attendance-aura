@@ -95,6 +95,30 @@ export default function StudentDashboard() {
   const [attendedClasses, setAttendedClasses] = useState(0);
   const [attendancePercentage, setAttendancePercentage] = useState(0);
   const [subjectStats, setSubjectStats] = useState<SubjectStats[]>([]);
+  const [activeSession, setActiveSession] = useState<any>(null);
+
+  // Real-time active session listener for student's branch/semester/section
+  useEffect(() => {
+    const activeRef = ref(rtdb, 'active_session');
+    const unsubscribe = onValue(activeRef, (snap: any) => {
+      if (snap.exists()) {
+        const session = snap.val();
+        if (
+          session &&
+          session.branch?.trim().toUpperCase() === currentUser?.branch?.trim().toUpperCase() &&
+          session.semester?.trim().toUpperCase() === currentUser?.semester?.trim().toUpperCase() &&
+          session.section?.trim().toUpperCase() === currentUser?.section?.trim().toUpperCase()
+        ) {
+          setActiveSession(session);
+        } else {
+          setActiveSession(null);
+        }
+      } else {
+        setActiveSession(null);
+      }
+    });
+    return () => unsubscribe();
+  }, [currentUser]);
 
   useEffect(() => {
     // Load attendance data from Firebase
@@ -516,6 +540,33 @@ export default function StudentDashboard() {
 
   const DashboardView = () => (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+      {activeSession && (
+        <motion.div
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="bg-gradient-to-r from-emerald-600 to-teal-600 rounded-2xl p-6 text-white shadow-xl flex flex-col md:flex-row items-center justify-between gap-4 border border-emerald-400/30"
+        >
+          <div className="flex items-center gap-4">
+            <span className="relative flex h-4 w-4">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-4 w-4 bg-white"></span>
+            </span>
+            <div>
+              <h4 className="text-xl font-extrabold tracking-wide">Live Attendance Session Active!</h4>
+              <p className="text-emerald-100 text-sm mt-0.5">
+                {activeSession.subject || 'Class'} ({activeSession.className || ''}) is taking attendance now.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setView('mark-attendance')}
+            className="px-6 py-3 bg-white text-emerald-700 font-bold rounded-xl shadow-lg hover:bg-emerald-50 transition-all transform hover:scale-105 active:scale-95 whitespace-nowrap cursor-pointer"
+          >
+            Mark Attendance Now →
+          </button>
+        </motion.div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="bg-gradient-to-br from-blue-500 to-cyan-500 border-0 p-6 text-white">
           <Calendar className="w-12 h-12 mb-4" />

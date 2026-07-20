@@ -7,7 +7,7 @@ const router = express.Router();
 // Teachers can filter by their branch: ?branch=CSE
 router.get('/', protect, restrictTo('admin', 'manager', 'teacher'), async (req, res) => {
   try {
-    let query = {};
+    let query = { isActive: { $ne: false } };
     
     // If teacher is requesting, allow filtering by their branch or department
     if (req.user.role === 'teacher') {
@@ -16,12 +16,12 @@ router.get('/', protect, restrictTo('admin', 'manager', 'teacher'), async (req, 
         return res.status(400).json({ error: 'Teacher branch or department not set. Contact admin.' });
       }
       // Teachers can only see students from their branch/department
-      query = { role: 'student', branch: teacherScope };
+      query = { role: 'student', branch: teacherScope, isActive: { $ne: false } };
       console.log(`[GET /api/users] Teacher (${req.user.name}) requesting students from branch/department: ${teacherScope}`);
     } else {
-      // Admin/manager can filter by branch if provided, otherwise get all
+      // Admin/manager can filter by branch if provided, otherwise get all active users
       if (req.query.branch) {
-        query = { branch: req.query.branch };
+        query.branch = req.query.branch;
         console.log(`[GET /api/users] ${req.user.role} (${req.user.name}) requesting students from branch: ${req.query.branch}`);
       } else {
         console.log(`[GET /api/users] ${req.user.role} (${req.user.name}) requesting all users`);
@@ -39,20 +39,52 @@ router.get('/', protect, restrictTo('admin', 'manager', 'teacher'), async (req, 
 // POST /api/users - Create user (admin/manager)
 router.post('/', protect, restrictTo('admin', 'manager'), async (req, res) => {
   try {
-    const { name, email, password, role, phone, department, designation, childName, childUSN } = req.body;
+    const { name, email, password, role, phone, department, designation, childName, childUSN, usn, rollNo, branch, semester, section, batch } = req.body;
     
-    const existing = await User.findOne({ email });
-    if (existing) return res.status(400).json({ error: 'Email already registered' });
+    const normalizedEmail = email ? email.toLowerCase() : '';
+    let existing = await User.findOne({ email: normalizedEmail });
+    if (!existing && role === 'student' && usn) {
+      existing = await User.findOne({ usn: usn.toUpperCase(), role: 'student' });
+    }
+
+    if (existing) {
+      // Reconnect and restore existing database record
+      existing.name = name || existing.name;
+      existing.email = normalizedEmail || existing.email;
+      existing.password = password;
+      existing.role = role || existing.role;
+      existing.phone = phone !== undefined ? phone : existing.phone;
+      if (department) existing.department = department;
+      if (designation) existing.designation = designation;
+      if (childName) existing.childName = childName;
+      if (childUSN) existing.childUSN = childUSN.toUpperCase();
+      if (usn) existing.usn = usn.toUpperCase();
+      if (rollNo) existing.rollNo = rollNo;
+      if (branch) existing.branch = branch;
+      if (semester) existing.semester = semester;
+      if (section) existing.section = section;
+      if (batch) existing.batch = batch;
+      existing.isActive = true;
+      existing.isEmailVerified = true;
+      await existing.save();
+
+      const userData = existing.toObject();
+      delete userData.password;
+      return res.status(200).json({ success: true, user: userData, restored: true });
+    }
 
     // Max 2 parents per USN
     if (role === 'parent' && childUSN) {
-      const count = await User.countDocuments({ role: 'parent', childUSN });
+      const count = await User.countDocuments({ role: 'parent', childUSN, isActive: { $ne: false } });
       if (count >= 2) return res.status(400).json({ error: 'Maximum 2 parent accounts already exist for this student' });
     }
 
     const user = await User.create({
-      name, email, password, role, phone: phone || '',
+      name, email: normalizedEmail, password, role, phone: phone || '',
       department: department || null, designation: designation || null,
+      usn: usn?.toUpperCase() || null, rollNo: rollNo || null,
+      branch: branch || null, semester: semester || null,
+      section: section || null, batch: batch || null,
       childName: childName || null, childUSN: childUSN?.toUpperCase() || null,
       isEmailVerified: true, // Admin created accounts are pre-verified
     });
@@ -99,9 +131,9 @@ router.put('/:id', protect, restrictTo('admin', 'manager', 'teacher', 'student')
 // DELETE /api/users/:id - Delete user (account only)
 router.delete('/:id', protect, restrictTo('admin'), async (req, res) => {
   try {
-    const user = await User.findByIdAndDelete(req.params.id);
+    const user = await User.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true });
     if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json({ success: true, message: 'User deleted' });
+    res.json({ success: true, message: 'User account deactivated. Data preserved.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

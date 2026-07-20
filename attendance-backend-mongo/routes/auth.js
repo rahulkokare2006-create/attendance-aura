@@ -101,20 +101,78 @@ router.post('/register', createRateLimiter('register', 5, 2 * 60 * 1000), async 
       return res.status(403).json({ error: `${role} accounts are created by admin only` });
     }
 
-    // Max 2 parents per student USN
-    if (role === 'parent' && childUSN) {
-      const parentCount = await User.countDocuments({ role: 'parent', childUSN });
-      if (parentCount >= 2) return res.status(400).json({ error: 'Maximum 2 parent accounts already exist for this student' });
+    const normalizedEmail = email ? email.toLowerCase() : '';
+    const normalizedUsn = usn ? usn.toUpperCase() : null;
+
+    // Check if user record already exists for the same email or USN (for reconnecting after account recreation)
+    let existing = await User.findOne({ email: normalizedEmail });
+    if (!existing && role === 'student' && normalizedUsn) {
+      existing = await User.findOne({ usn: normalizedUsn, role: 'student' });
     }
 
-    // Check email exists
-    const existing = await User.findOne({ email });
-    if (existing) return res.status(400).json({ error: 'Email already registered. Try logging in.' });
+    if (existing) {
+      if (existing.isActive) {
+        return res.status(400).json({ error: 'Email or USN already registered. Try logging in.' });
+      }
 
-    // Check if student USN already exists
-    if (role === 'student' && usn) {
-      const usnExists = await User.findOne({ usn: usn.toUpperCase(), role: 'student' });
-      if (usnExists) return res.status(400).json({ error: 'USN already registered. If this is your USN, contact admin.' });
+      // Reconnect to existing database record and restore previous data automatically
+      const needsVerification = ['student', 'teacher'].includes(role);
+      const verifyToken = needsVerification ? crypto.randomBytes(32).toString('hex') : null;
+      const verifyTokenExpires = needsVerification ? Date.now() + 24 * 60 * 60 * 1000 : null;
+
+      existing.name = name;
+      existing.email = normalizedEmail;
+      existing.password = password;
+      existing.role = role;
+      existing.phone = phone || existing.phone;
+      if (normalizedUsn) existing.usn = normalizedUsn;
+      if (rollNo) existing.rollNo = rollNo;
+      if (branch) existing.branch = branch;
+      if (semester) existing.semester = semester;
+      if (section) existing.section = section;
+      if (batch) existing.batch = batch;
+      if (childName) existing.childName = childName;
+      if (childUSN) existing.childUSN = childUSN.toUpperCase();
+      if (department) existing.department = department;
+      if (designation) existing.designation = designation;
+
+      existing.isActive = true;
+      existing.isEmailVerified = !needsVerification;
+      existing.emailVerifyToken = verifyToken;
+      existing.emailVerifyTokenExpires = verifyTokenExpires;
+
+      await existing.save();
+
+      let verifyUrl = null;
+      if (needsVerification && verifyToken) {
+        verifyUrl = `${FRONTEND_URL}/verify-email/${verifyToken}`;
+        const emailResult = await safeSendEmail(normalizedEmail, 'Verify your Attendance Aura account', `
+          <div style="font-family:Arial;padding:20px;">
+            <h2>Welcome back to Attendance Aura!</h2>
+            <p>Your account has been restored. Click the button below to verify your email:</p>
+            <a href="${verifyUrl}" style="background:#3b82f6;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block;">
+              Verify Email
+            </a>
+            <p style="color:#666;margin-top:16px;">This link expires in 24 hours.</p>
+          </div>
+        `);
+        if (!emailResult.success) {
+          console.error(`❌ Failed to send verification email to ${normalizedEmail}:`, emailResult.error);
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: needsVerification ? 'Account restored! Check your email to verify.' : 'Account restored successfully!',
+        verifyUrl,
+        restored: true,
+      });
+    }
+
+    // Max 2 parents per student USN
+    if (role === 'parent' && childUSN) {
+      const parentCount = await User.countDocuments({ role: 'parent', childUSN, isActive: { $ne: false } });
+      if (parentCount >= 2) return res.status(400).json({ error: 'Maximum 2 parent accounts already exist for this student' });
     }
 
     // Create verify token for student/teacher
@@ -123,8 +181,8 @@ router.post('/register', createRateLimiter('register', 5, 2 * 60 * 1000), async 
 
     const verifyTokenExpires = needsVerification ? Date.now() + 24 * 60 * 60 * 1000 : null;
     const user = await User.create({
-      name, email, password, role, phone: phone || '',
-      usn: usn?.toUpperCase() || null, rollNo: rollNo || null,
+      name, email: normalizedEmail, password, role, phone: phone || '',
+      usn: normalizedUsn, rollNo: rollNo || null,
       branch: branch || null, semester: semester || null,
       section: section || null, batch: batch || null,
       childName: childName || null, childUSN: childUSN?.toUpperCase() || null,
@@ -138,7 +196,7 @@ router.post('/register', createRateLimiter('register', 5, 2 * 60 * 1000), async 
     let verifyUrl = null;
     if (needsVerification && verifyToken) {
       verifyUrl = `${FRONTEND_URL}/verify-email/${verifyToken}`;
-      const emailResult = await safeSendEmail(email, 'Verify your Attendance Aura account', `
+      const emailResult = await safeSendEmail(normalizedEmail, 'Verify your Attendance Aura account', `
         <div style="font-family:Arial;padding:20px;">
           <h2>Welcome to Attendance Aura!</h2>
           <p>Click the button below to verify your email:</p>
@@ -149,14 +207,14 @@ router.post('/register', createRateLimiter('register', 5, 2 * 60 * 1000), async 
         </div>
       `);
       if (!emailResult.success) {
-        console.error(`❌ Failed to send verification email to ${email}:`, emailResult.error);
+        console.error(`❌ Failed to send verification email to ${normalizedEmail}:`, emailResult.error);
         await User.deleteOne({ _id: user._id });
         return res.status(500).json({
           error: 'Failed to send verification email. Check email credentials and try again.',
           detail: emailResult.error,
         });
       }
-      console.log(`📧 Verification email sent to ${email}`);
+      console.log(`📧 Verification email sent to ${normalizedEmail}`);
     }
 
     res.status(201).json({

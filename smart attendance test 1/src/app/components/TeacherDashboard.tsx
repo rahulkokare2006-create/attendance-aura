@@ -788,6 +788,8 @@ export default function TeacherDashboard() {
       setOtp(newOTP);
       setQrCode(qrDataUrl);
       setAttendanceSession(sessionData);
+      setAttendanceRecords(initialRecords);
+      setIsAttendanceLoaded(true);
       toast.success('Attendance session started! All students marked ABSENT by default.');
     } catch (err: any) {
       console.error('Failed to start session:', err);

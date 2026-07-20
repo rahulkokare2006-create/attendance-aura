@@ -651,6 +651,48 @@ export const onValue = (refObj: any, callback: Function, errorCallback?: Functio
     };
   }
 
+  // For active session - real-time updates via Socket.IO + poll
+  if (path === 'active_session') {
+    let lastValStr = '';
+    const updateSessionState = async () => {
+      try {
+        const snap = await get(refObj);
+        const val = snap.val();
+        const valStr = JSON.stringify(val || null);
+        if (valStr !== lastValStr) {
+          lastValStr = valStr;
+          console.log(`[onValue][active_session] Real-time session change detected`, val);
+          callback(snap);
+        }
+      } catch (err: any) {
+        console.warn(`[onValue][active_session] Error:`, err?.message || err);
+        if (errorCallback) errorCallback(err);
+      }
+    };
+
+    // Socket listener for instant updates
+    getSocket(true).then((sock: any) => {
+      if (!sock) return;
+      const onSessionChanged = () => updateSessionState();
+      sock.on('active-session-changed', onSessionChanged);
+      sock.on('session-started', onSessionChanged);
+      sock.on('session-ended', onSessionChanged);
+      unsubscribeFunctions.push(() => {
+        sock.off('active-session-changed', onSessionChanged);
+        sock.off('session-started', onSessionChanged);
+        sock.off('session-ended', onSessionChanged);
+      });
+    }).catch(() => {});
+
+    // Polling interval fallback (every 3 seconds)
+    const interval = setInterval(updateSessionState, 3000);
+    unsubscribeFunctions.push(() => clearInterval(interval));
+
+    return () => {
+      unsubscribeFunctions.forEach(fn => fn());
+    };
+  }
+
   // For teacher settings and other static paths - no real-time
   if (path.startsWith('teacher_settings/') || path.startsWith('teacher_classes/') || path === 'leave_applications' || path === 'leave_notifications') {
     // One-time fetch only - these don't need real-time updates in this context

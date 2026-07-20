@@ -20,7 +20,7 @@ const getDistance = (lat1, lng1, lat2, lng2) => {
 // POST /api/attendance/start-session - Teacher starts session
 router.post('/start-session', protect, restrictTo('teacher', 'manager'), async (req, res) => {
   try {
-    const { classId, otp, qrData, geoFencingEnabled, teacherLat, teacherLng, gpsRadius } = req.body;
+    const { classId, otp, qrData, geoFencingEnabled, teacherLat, teacherLng, gpsRadius, sessionId: requestedSessionId } = req.body;
     
     const cls = await Class.findById(classId);
     if (!cls) return res.status(404).json({ error: 'Class not found' });
@@ -28,7 +28,7 @@ router.post('/start-session', protect, restrictTo('teacher', 'manager'), async (
     // Delete any existing active session for this teacher
     await ActiveSession.deleteOne({ teacherId: req.user._id });
 
-    const sessionId = Date.now().toString();
+    const sessionId = requestedSessionId || Date.now().toString();
     const now = new Date();
 
     // Initialize all students as ABSENT
@@ -49,8 +49,10 @@ router.post('/start-session', protect, restrictTo('teacher', 'manager'), async (
     });
 
     // Emit via socket.io
-    req.app.get('io').emit(`session:${sessionId}:update`, { records });
-    console.log(`[IO] Emitted session:${sessionId}:update (start-session)`);
+    const io = req.app.get('io');
+    io.emit(`session:${sessionId}:update`, { records });
+    io.emit('active-session-changed', { session, type: 'start' });
+    console.log(`[IO] Emitted session:${sessionId}:update and active-session-changed (start-session)`);
 
     res.json({ success: true, session });
   } catch (err) {
@@ -336,6 +338,10 @@ router.post('/end-session', protect, restrictTo('teacher', 'manager'), async (re
     await session.save();
     await ActiveSession.deleteOne({ sessionId });
     console.log(`[endSession] Session cleanup complete, deleted from ActiveSession collection`);
+
+    // Emit socket event for active session state change
+    const io = req.app.get('io');
+    io.emit('active-session-changed', { session: null, sessionId, type: 'end' });
 
     res.json({ success: true, message: save ? 'Attendance saved!' : 'Session ended without saving' });
   } catch (err) {
