@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const Class = require('../models/Class');
 const Attendance = require('../models/Attendance');
 const { protect, restrictTo } = require('../middleware/auth');
@@ -41,10 +42,20 @@ router.post('/', protect, restrictTo('teacher', 'manager'), async (req, res) => 
 // PUT /api/classes/:id - Update class
 router.put('/:id', protect, restrictTo('teacher', 'manager'), async (req, res) => {
   try {
-    const cls = await Class.findOneAndUpdate(
-      { _id: req.params.id, teacherId: req.user._id },
-      req.body, { new: true }
-    );
+    const id = req.params.id;
+    let cls = null;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      cls = await Class.findOneAndUpdate(
+        { _id: id, teacherId: req.user._id },
+        req.body, { new: true }
+      );
+    }
+    if (!cls && (req.body.name || req.body.subject)) {
+      cls = await Class.findOneAndUpdate(
+        { teacherId: req.user._id, name: req.body.name, subject: req.body.subject },
+        req.body, { new: true }
+      );
+    }
     if (!cls) return res.status(404).json({ error: 'Class not found' });
     res.json({ success: true, class: cls });
   } catch (err) {
@@ -55,21 +66,21 @@ router.put('/:id', protect, restrictTo('teacher', 'manager'), async (req, res) =
 // DELETE /api/classes/:id - Delete class + attendance
 router.delete('/:id', protect, restrictTo('teacher', 'manager'), async (req, res) => {
   try {
-    // Verify authorization: teacher can only delete their own classes
-    const cls = await Class.findOne({ _id: req.params.id, teacherId: req.user._id });
-    if (!cls) {
-      if (req.user.role === 'manager') {
-        // Manager can delete any class
-        const anyClass = await Class.findById(req.params.id);
-        if (!anyClass) return res.status(404).json({ error: 'Class not found' });
-      } else {
-        return res.status(404).json({ error: 'Class not found or not authorized' });
+    const id = req.params.id;
+    let cls = null;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      cls = await Class.findOne({ _id: id, teacherId: req.user._id });
+      if (!cls && req.user.role === 'manager') {
+        cls = await Class.findById(id);
       }
+    }
+    if (!cls) {
+      return res.status(404).json({ error: 'Class not found or not authorized' });
     }
     
     // Delete all attendance for this class
-    await Attendance.deleteMany({ classId: req.params.id });
-    await Class.findByIdAndDelete(req.params.id);
+    await Attendance.deleteMany({ classId: cls._id });
+    await Class.findByIdAndDelete(cls._id);
     res.json({ success: true, message: '✅ Class and all attendance records deleted!' });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -415,8 +415,21 @@ router.get('/teacher/:teacherId', protect, async (req, res) => {
 router.put('/:id', protect, restrictTo('teacher', 'manager'), async (req, res) => {
   try {
     const { records } = req.body;
-    const attendance = await Attendance.findByIdAndUpdate(
-      req.params.id, { records }, { new: true }
+    const id = req.params.id;
+
+    let query;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      query = { $or: [{ _id: id }, { sessionId: id }] };
+    } else {
+      query = { sessionId: id };
+    }
+
+    if (req.user.role !== 'manager') {
+      query.teacherId = req.user._id;
+    }
+
+    const attendance = await Attendance.findOneAndUpdate(
+      query, { records }, { new: true }
     );
     if (!attendance) return res.status(404).json({ error: 'Attendance record not found' });
     res.json({ success: true, attendance });
@@ -522,10 +535,20 @@ router.get('/outside-alerts/:sessionId', protect, async (req, res) => {
 // DELETE /api/attendance/:id - Delete an attendance record
 router.delete('/:id', protect, restrictTo('teacher', 'manager'), async (req, res) => {
   try {
-    const attendance = await Attendance.findOneAndDelete({
-      _id: req.params.id,
-      teacherId: req.user._id
-    });
+    const id = req.params.id;
+
+    let query;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      query = { $or: [{ _id: id }, { sessionId: id }] };
+    } else {
+      query = { sessionId: id };
+    }
+
+    if (req.user.role !== 'manager') {
+      query.teacherId = req.user._id;
+    }
+
+    const attendance = await Attendance.findOneAndDelete(query);
     if (!attendance) return res.status(404).json({ error: 'Attendance record not found or not authorized' });
     res.json({ success: true, message: 'Attendance record deleted' });
   } catch (err) {
