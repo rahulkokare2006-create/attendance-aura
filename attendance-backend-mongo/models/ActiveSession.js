@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const activeSessionSchema = new mongoose.Schema({
   sessionId: { type: String, required: true, unique: true },
   teacherId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  classId: { type: mongoose.Schema.Types.ObjectId, ref: 'Class', required: true },
+  classId: { type: mongoose.Schema.Types.Mixed, required: true },
   className: { type: String, required: true },
   subject: { type: String, required: true },
   branch: { type: String, required: true },

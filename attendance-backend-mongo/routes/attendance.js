@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const ActiveSession = require('../models/ActiveSession');
 const Attendance = require('../models/Attendance');
 const Class = require('../models/Class');
@@ -22,8 +23,17 @@ router.post('/start-session', protect, restrictTo('teacher', 'manager'), async (
   try {
     const { classId, otp, qrData, geoFencingEnabled, teacherLat, teacherLng, gpsRadius, sessionId: requestedSessionId } = req.body;
     
-    const cls = await Class.findById(classId);
-    if (!cls) return res.status(404).json({ error: 'Class not found' });
+    let cls = null;
+    if (classId && mongoose.Types.ObjectId.isValid(classId)) {
+      cls = await Class.findById(classId);
+    }
+    if (!cls) {
+      cls = await Class.findOne({ teacherId: req.user._id, isActive: true });
+    }
+    if (!cls) {
+      cls = await Class.findOne({ teacherId: req.user._id });
+    }
+    if (!cls) return res.status(404).json({ error: 'Class not found. Please create a class first.' });
 
     // Delete any existing active session for this teacher
     await ActiveSession.deleteOne({ teacherId: req.user._id });
@@ -267,8 +277,15 @@ router.post('/end-session', protect, restrictTo('teacher', 'manager'), async (re
     }
 
     if (save) {
-      const cls = await Class.findById(session.classId);
-      const records = (cls?.students || []).map(student => {
+      let cls = null;
+      if (session.classId && mongoose.Types.ObjectId.isValid(session.classId)) {
+        cls = await Class.findById(session.classId);
+      }
+      if (!cls && session.teacherId) {
+        cls = await Class.findOne({ teacherId: session.teacherId, isActive: true });
+      }
+      const studentsList = (cls?.students && cls.students.length > 0) ? cls.students : (session.students || []);
+      const records = studentsList.map(student => {
         let status = 'ABSENT';
         let markedAt = null;
         const studentUsn = String(student.usn || '').trim().toUpperCase();
