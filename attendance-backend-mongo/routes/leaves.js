@@ -15,17 +15,12 @@ router.post('/', protect, restrictTo('student'), async (req, res) => {
     // Ensure dates are in valid format
     const from = new Date(fromDate);
     const to = new Date(toDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     
     if (isNaN(from.getTime()) || isNaN(to.getTime())) {
       return res.status(400).json({ error: 'Invalid date format' });
     }
-    if (from < today) {
-      return res.status(400).json({ error: 'Cannot submit leave for past dates' });
-    }
     if (to < from) {
-      return res.status(400).json({ error: 'End date must be after start date' });
+      return res.status(400).json({ error: 'End date must be on or after start date' });
     }
     
     const leave = await LeaveApplication.create({
