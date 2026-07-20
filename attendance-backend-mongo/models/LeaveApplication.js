@@ -11,7 +11,7 @@ const leaveSchema = new mongoose.Schema({
   toDate: { type: String, required: true },
   reason: { type: String, required: true },
   fileName: { type: String, default: null },
-  fileData: { type: String, default: null }, // base64
+  fileData: { type: mongoose.Schema.Types.Mixed, default: null }, // object { name, data } or string
   status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
   reviewedBy: { type: String, default: null },
   reviewNote: { type: String, default: null },

@@ -23,11 +23,17 @@ router.post('/', protect, restrictTo('student'), async (req, res) => {
       return res.status(400).json({ error: 'End date must be on or after start date' });
     }
     
+    let targetFileName = fileName || null;
+    if (fileData && typeof fileData === 'object' && fileData.name) {
+      targetFileName = fileData.name;
+    }
+    
     const leave = await LeaveApplication.create({
       studentId: req.user._id, studentName: req.user.name,
       studentUSN: req.user.usn, studentBranch: req.user.branch,
       studentSemester: req.user.semester, subject: subject || '',
-      fromDate: fromDate, toDate: toDate, reason: reason.trim(), fileName: fileName || null, fileData: fileData || null,
+      fromDate: fromDate, toDate: toDate, reason: reason.trim(),
+      fileName: targetFileName, fileData: fileData || null,
     });
     res.status(201).json({ success: true, leave });
   } catch (err) {
