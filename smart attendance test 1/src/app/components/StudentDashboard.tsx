@@ -166,18 +166,23 @@ export default function StudentDashboard() {
     setDeviceId(id);
 
     const getRecordKey = (item: any) => item.sessionId || item.id || `${item.date}_${item.subject}`;
-    const getRecordSem = (r: any) => {
-      // Priority 1: explicit semester field on the record
+
+    // Returns ONLY explicitly stored semester — no fallback guess.
+    // Used when merging RTDB data so we never override a good backend semester with a guess.
+    const getExplicitSem = (r: any): string => {
       if (r.semester && String(r.semester).trim()) return String(r.semester).trim();
-      // Priority 2: classSemester field
       if (r.classSemester && String(r.classSemester).trim()) return String(r.classSemester).trim();
-      // Priority 3: extract digits that look like a semester number from className
       if (r.className) {
         const semMatch = String(r.className).match(/(?:sem|semester|class|sec)\s*(\d+)/i);
         if (semMatch && semMatch[1]) return semMatch[1];
       }
-      // Fallback: use currentUserRef (always fresh, not stale) so changing semester
-      // doesn't cross-contaminate old records that genuinely have no semester stored
+      return ''; // empty = not stored, don't guess
+    };
+
+    // Returns semester with fallback — used for backend records which have authoritative MongoDB data.
+    const getRecordSem = (r: any): string => {
+      const explicit = getExplicitSem(r);
+      if (explicit) return explicit;
       return String(currentUserRef.current?.semester || '').trim();
     };
 
@@ -188,12 +193,21 @@ export default function StudentDashboard() {
         if (backendRes.success && Array.isArray(backendRes.history) && backendRes.history.length > 0) {
           const tagged = backendRes.history.map((r: any) => ({
             ...r,
-            semester: getRecordSem(r),
+            semester: getRecordSem(r), // backend is authoritative, use fallback here
           }));
           setAttendanceHistory(prev => {
             const map = new Map<string, any>();
             tagged.forEach((item: any) => map.set(getRecordKey(item), item));
-            prev.forEach((item: any) => map.set(getRecordKey(item), { ...map.get(getRecordKey(item)), ...item }));
+            // prev overrides backend only for non-semester fields (backend semester wins)
+            prev.forEach((item: any) => {
+              const existing = map.get(getRecordKey(item));
+              map.set(getRecordKey(item), {
+                ...existing,
+                ...item,
+                // Keep backend semester if it's more reliable (non-empty)
+                semester: existing?.semester || item.semester,
+              });
+            });
             return Array.from(map.values());
           });
         }
@@ -209,14 +223,19 @@ export default function StudentDashboard() {
       try {
         if (snapshot.exists()) {
           const rawRecords: any[] = Object.values(snapshot.val());
-          const tagged = rawRecords.map((r: any) => ({
-            ...r,
-            semester: getRecordSem(r),
-          }));
           setAttendanceHistory(prev => {
             const map = new Map<string, any>();
             prev.forEach((item: any) => map.set(getRecordKey(item), item));
-            tagged.forEach((item: any) => map.set(getRecordKey(item), { ...map.get(getRecordKey(item)), ...item }));
+            rawRecords.forEach((r: any) => {
+              const key = getRecordKey(r);
+              const prevItem = map.get(key);
+              // Only use explicit semester from RTDB; if none, keep whatever prev already has
+              const explicitSem = getExplicitSem(r);
+              const effectiveSem = explicitSem
+                || prevItem?.semester   // trust backend-resolved semester already in state
+                || String(currentUserRef.current?.semester || '').trim();
+              map.set(key, { ...prevItem, ...r, semester: effectiveSem });
+            });
             return Array.from(map.values());
           });
         }

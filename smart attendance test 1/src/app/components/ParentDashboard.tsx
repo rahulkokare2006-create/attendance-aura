@@ -96,13 +96,21 @@ export default function ParentDashboard() {
           const studentUsn = (student as any).usn || '';
 
           const getRecordKey = (item: any) => item.sessionId || item.id || `${item.date}_${item.subject}`;
-          const getRecordSem = (r: any) => {
+
+          // Returns ONLY explicitly stored semester — no fallback guess
+          const getExplicitSem = (r: any): string => {
             if (r.semester && String(r.semester).trim()) return String(r.semester).trim();
             if (r.classSemester && String(r.classSemester).trim()) return String(r.classSemester).trim();
             if (r.className) {
-              const semMatch = String(r.className).match(/(?:sem|semester|class|sec)?\s*(\d+)/i);
+              const semMatch = String(r.className).match(/(?:sem|semester|class|sec)\s*(\d+)/i);
               if (semMatch && semMatch[1]) return semMatch[1];
             }
+            return '';
+          };
+
+          const getRecordSem = (r: any): string => {
+            const explicit = getExplicitSem(r);
+            if (explicit) return explicit;
             return String((student as any)?.semester || '').trim();
           };
 
@@ -117,7 +125,14 @@ export default function ParentDashboard() {
               setAttendanceHistory(prev => {
                 const map = new Map<string, any>();
                 tagged.forEach((item: any) => map.set(getRecordKey(item), item));
-                prev.forEach((item: any) => map.set(getRecordKey(item), { ...map.get(getRecordKey(item)), ...item }));
+                prev.forEach((item: any) => {
+                  const existing = map.get(getRecordKey(item));
+                  map.set(getRecordKey(item), {
+                    ...existing,
+                    ...item,
+                    semester: existing?.semester || item.semester,
+                  });
+                });
                 return Array.from(map.values());
               });
             }
@@ -131,14 +146,18 @@ export default function ParentDashboard() {
             try {
               if (snapshot.exists()) {
                 const rawRecords: any[] = Object.values(snapshot.val());
-                const tagged = rawRecords.map((r: any) => ({
-                  ...r,
-                  semester: getRecordSem(r),
-                }));
                 setAttendanceHistory(prev => {
                   const map = new Map<string, any>();
                   prev.forEach((item: any) => map.set(getRecordKey(item), item));
-                  tagged.forEach((item: any) => map.set(getRecordKey(item), { ...map.get(getRecordKey(item)), ...item }));
+                  rawRecords.forEach((r: any) => {
+                    const key = getRecordKey(r);
+                    const prevItem = map.get(key);
+                    const explicitSem = getExplicitSem(r);
+                    const effectiveSem = explicitSem
+                      || prevItem?.semester
+                      || String((student as any)?.semester || '').trim();
+                    map.set(key, { ...prevItem, ...r, semester: effectiveSem });
+                  });
                   return Array.from(map.values());
                 });
               }
