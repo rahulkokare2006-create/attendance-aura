@@ -622,6 +622,24 @@ export default function TeacherDashboard() {
     setView('classes');
   };
 
+  const handlePromoteClass = (cls: ClassData) => {
+    const current = parseInt(cls.semester) || 1;
+    if (current >= 8) {
+      toast.error('Class is already at maximum Semester 8');
+      return;
+    }
+    const nextSem = (current + 1).toString();
+    if (window.confirm(`Promote "${cls.name}" from Semester ${cls.semester} to Semester ${nextSem}?\n\nThis will update the class semester for upcoming attendance sessions while keeping past attendance history intact.`)) {
+      const updatedClass = { ...cls, semester: nextSem };
+      const updatedClasses = classes.map(c => c.id === cls.id ? updatedClass : c);
+      saveClasses(updatedClasses);
+      if (selectedClass?.id === cls.id) {
+        setSelectedClass(updatedClass);
+      }
+      toast.success(`🎉 Class promoted to Semester ${nextSem}!`);
+    }
+  };
+
   const handleDeleteClass = async (classId: string) => {
     if (!window.confirm('Delete this class?\n\nThis will remove ALL attendance records for this class from student and parent portals. This cannot be undone!')) return;
     setGlobalLoading(true);
@@ -1584,16 +1602,28 @@ export default function TeacherDashboard() {
                       👥 {classData.students.length} students
                     </p>
                   </div>
-                  <Button
-                    onClick={() => {
-                      setSelectedClass(classData);
-                      setView('class-detail');
-                    }}
-                    className="bg-gradient-to-r from-green-500 to-emerald-600"
-                  >
-                    <Play className="w-5 h-5 mr-2" />
-                    Start Session
-                  </Button>
+                  <div className="flex gap-2 items-center">
+                    <Button
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePromoteClass(classData);
+                      }}
+                      className="bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 font-bold border border-purple-500/30"
+                    >
+                      🚀 Promote Sem
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setSelectedClass(classData);
+                        setView('class-detail');
+                      }}
+                      className="bg-gradient-to-r from-green-500 to-emerald-600"
+                    >
+                      <Play className="w-5 h-5 mr-2" />
+                      Start Session
+                    </Button>
+                  </div>
                 </div>
               </Card>
             ))
@@ -1609,10 +1639,14 @@ export default function TeacherDashboard() {
                 <h2 className={`text-2xl font-bold ${textColor}`}>{selectedClass.name}</h2>
                 <p className={subTextColor}>{selectedClass.subject} {selectedClass.subjectCode && `(${selectedClass.subjectCode})`}</p>
                 <p className={`${subTextColor} text-sm mt-1`}>
-                  {selectedClass.branch} • Sem {selectedClass.semester} • Section {selectedClass.section} • {selectedClass.classType || 'Theory'}
+                  {selectedClass.branch} • Sem {selectedClass.semester} • Section {selectedClass.section} • {selectedClass.classType || 'Theory'} {selectedClass.batch && `• Batch ${selectedClass.batch}`}
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap justify-end">
+                <Button size="sm" onClick={() => handlePromoteClass(selectedClass)}
+                  className="bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 font-bold border border-purple-500/30">
+                  🚀 Promote Sem
+                </Button>
                 <Button size="sm" onClick={() => { setEditingClass({...selectedClass}); setView('create-class'); }}
                   className="bg-blue-500/20 hover:bg-blue-500/30 text-blue-400">
                   <Edit2 size={15} className="mr-1" /> Edit
