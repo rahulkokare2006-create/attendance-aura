@@ -3,6 +3,7 @@ import { ref, set, get, update, onValue, remove, rtdb, db } from './firebaseComp
 import { motion } from 'motion/react';
 import { ArrowLeft, LogOut, Calendar, CheckCircle2, XCircle, Moon, Sun, BookOpen, BarChart3 } from 'lucide-react';
 import { useAuth } from './AuthContext';
+import { attendanceAPI } from './api';
 
 
 import { useTheme } from './ThemeContext';
@@ -93,13 +94,33 @@ export default function ParentDashboard() {
 
           // Load attendance data in real-time with error handling
           const studentUsn = (student as any).usn || '';
-          const studentRef = ref(rtdb, `student_attendance/${studentUsn}`);
 
+          // 1. Try fetching official backend history with semester metadata
+          try {
+            const backendRes = await attendanceAPI.getStudentHistory(studentUsn);
+            if (backendRes.success && Array.isArray(backendRes.history) && backendRes.history.length > 0) {
+              const tagged = backendRes.history.map((r: any) => ({
+                ...r,
+                semester: r.semester || (student as any).semester || '',
+              }));
+              setAttendanceHistory(tagged);
+              return;
+            }
+          } catch (e) {
+            console.log('[ParentDashboard] Backend fetch fallback to RTDB');
+          }
+
+          // 2. Real-time fallback from RTDB
+          const studentRef = ref(rtdb, `student_attendance/${studentUsn}`);
           unsubscribe = onValue(studentRef, (snapshot: any) => {
             try {
               if (snapshot.exists()) {
-                const parsedHistory: AttendanceRecord[] = Object.values(snapshot.val());
-                setAttendanceHistory(parsedHistory);
+                const rawRecords: any[] = Object.values(snapshot.val());
+                const tagged = rawRecords.map((r: any) => ({
+                  ...r,
+                  semester: r.semester || (student as any).semester || '',
+                }));
+                setAttendanceHistory(tagged);
               } else {
                 setAttendanceHistory([]);
               }
@@ -128,8 +149,7 @@ export default function ParentDashboard() {
     const semNorm = normalizeSem(parentSemFilter || studentData?.semester);
     const filtered = (semNorm && parentSemFilter !== 'ALL')
       ? attendanceHistory.filter((h: any) => {
-          const recSem = normalizeSem(h.semester);
-          if (!recSem) return true;
+          const recSem = normalizeSem(h.semester || h.className);
           return recSem === semNorm;
         })
       : attendanceHistory;

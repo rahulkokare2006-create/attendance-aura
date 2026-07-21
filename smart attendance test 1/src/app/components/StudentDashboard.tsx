@@ -155,25 +155,49 @@ export default function StudentDashboard() {
   }, [currentUser]);
 
   useEffect(() => {
-    // Load attendance data from Firebase
     if (!currentUser?.usn) return;
-    // Set unique device ID for this student
     const id = getOrCreateDeviceId(currentUser.usn);
     setDeviceId(id);
-    const studentRef = ref(rtdb, `student_attendance/${currentUser.usn}`);
-    // Use onValue for real-time updates with error handling
-    const unsubscribe = onValue(studentRef, (snapshot: any) => {
+
+    const loadData = async () => {
+      // 1. Fetch from MongoDB backend to get official attendance records with semester metadata
       try {
-        const parsedHistory: AttendanceRecord[] = snapshot.exists() ? Object.values(snapshot.val()) : [];
-        setAttendanceHistory(parsedHistory);
+        const backendRes = await attendanceAPI.getStudentHistory(currentUser.usn);
+        if (backendRes.success && Array.isArray(backendRes.history) && backendRes.history.length > 0) {
+          const tagged = backendRes.history.map((r: any) => ({
+            ...r,
+            semester: r.semester || currentUser?.semester || '',
+          }));
+          setAttendanceHistory(tagged);
+          return;
+        }
       } catch (err) {
-        console.error('[StudentDashboard] Error processing attendance history:', err);
+        console.log('[StudentDashboard] Backend history fetch error, falling back to RTDB');
       }
-    }, (err: Error) => {
-      console.error('[StudentDashboard] Real-time listener error:', err);
-    });
-    return () => unsubscribe();
-  }, [currentUser]);
+
+      // 2. Real-time fallback from RTDB
+      const studentRef = ref(rtdb, `student_attendance/${currentUser.usn}`);
+      const unsubscribe = onValue(studentRef, (snapshot: any) => {
+        try {
+          if (snapshot.exists()) {
+            const rawRecords: any[] = Object.values(snapshot.val());
+            const tagged = rawRecords.map((r: any) => ({
+              ...r,
+              semester: r.semester || currentUser?.semester || '',
+            }));
+            setAttendanceHistory(tagged);
+          } else {
+            setAttendanceHistory([]);
+          }
+        } catch (err) {
+          console.error('[StudentDashboard] Error processing RTDB history:', err);
+        }
+      });
+      return () => unsubscribe();
+    };
+
+    loadData();
+  }, [currentUser?.usn]);
 
   // Dynamically calculate attendance stats & filter history based on selected semester
   useEffect(() => {
@@ -182,11 +206,7 @@ export default function StudentDashboard() {
 
     const filtered = (targetSemNorm && selectedSemester !== 'ALL')
       ? attendanceHistory.filter((h: any) => {
-          const recSemNorm = normalizeSem(h.semester);
-          if (!recSemNorm) {
-            // Untagged legacy record: show only when inspecting student's currently enrolled semester
-            return targetSemNorm === normalizeSem(currentUser?.semester);
-          }
+          const recSemNorm = normalizeSem(h.semester || h.className);
           return recSemNorm === targetSemNorm;
         })
       : attendanceHistory;
