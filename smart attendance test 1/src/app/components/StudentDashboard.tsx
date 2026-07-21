@@ -28,6 +28,13 @@ interface SubjectStats {
   percentage: number;
 }
 
+const normalizeSem = (sem: any): string => {
+  if (!sem) return '';
+  const str = String(sem).trim();
+  const match = str.match(/\d+/);
+  return match ? match[0] : str.toLowerCase();
+};
+
 export default function StudentDashboard() {
   const { currentUser, logout, updateUser } = useAuth();
   const { isDarkMode, toggleTheme } = useTheme();
@@ -89,23 +96,15 @@ export default function StudentDashboard() {
   };
   const [deviceId, setDeviceId] = useState('');
 
-
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
+  const [filteredHistory, setFilteredHistory] = useState<AttendanceRecord[]>([]);
   const [totalClasses, setTotalClasses] = useState(0);
   const [attendedClasses, setAttendedClasses] = useState(0);
   const [attendancePercentage, setAttendancePercentage] = useState(0);
   const [subjectStats, setSubjectStats] = useState<SubjectStats[]>([]);
   const [activeSession, setActiveSession] = useState<any>(null);
-  const [selectedSemester, setSelectedSemester] = useState<string>('');
 
   const [studentLeaves, setStudentLeaves] = useState<any[]>([]);
-
-  // Sync selectedSemester with currentUser's current semester
-  useEffect(() => {
-    if (currentUser?.semester) {
-      setSelectedSemester(currentUser.semester);
-    }
-  }, [currentUser?.semester]);
 
   const fetchStudentLeaves = async () => {
     try {
@@ -133,7 +132,7 @@ export default function StudentDashboard() {
         if (
           session &&
           session.branch?.trim().toUpperCase() === currentUser?.branch?.trim().toUpperCase() &&
-          session.semester?.trim().toUpperCase() === currentUser?.semester?.trim().toUpperCase() &&
+          normalizeSem(session.semester) === normalizeSem(currentUser?.semester) &&
           session.section?.trim().toUpperCase() === currentUser?.section?.trim().toUpperCase()
         ) {
           setActiveSession(session);
@@ -168,13 +167,14 @@ export default function StudentDashboard() {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // Dynamically calculate attendance stats based on selected/current semester
+  // Dynamically calculate attendance stats & filter history based strictly on student's current profile semester
   useEffect(() => {
-    const currentSem = selectedSemester || currentUser?.semester || '';
-    const filtered = currentSem && currentSem !== 'ALL'
-      ? attendanceHistory.filter((h: any) => !h.semester || String(h.semester).trim() === String(currentSem).trim())
+    const currentSemNorm = normalizeSem(currentUser?.semester);
+    const filtered = currentSemNorm
+      ? attendanceHistory.filter((h: any) => !h.semester || normalizeSem(h.semester) === currentSemNorm)
       : attendanceHistory;
 
+    setFilteredHistory(filtered);
     setTotalClasses(filtered.length);
     const attended = filtered.filter((h: any) => h.status === 'PRESENT').length;
     setAttendedClasses(attended);
@@ -193,7 +193,7 @@ export default function StudentDashboard() {
       percentage: Math.round((data.attended / data.total) * 100 * 10) / 10,
     }));
     setSubjectStats(stats);
-  }, [attendanceHistory, selectedSemester, currentUser?.semester]);
+  }, [attendanceHistory, currentUser?.semester]);
 
   // QR Scanner using browser camera + jsQR via CDN
   const startQRScanner = async () => {
@@ -649,30 +649,21 @@ export default function StudentDashboard() {
         </motion.div>
       ))}
 
-      {/* Semester Filter Header */}
-      <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-3 ${cardBg}`}>
-        <div className="flex items-center gap-2">
-          <span className="text-lg">🎓</span>
+      {/* Current Semester Badge */}
+      <div className={`p-4 rounded-2xl border flex items-center justify-between gap-3 ${cardBg}`}>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-lg">
+            🎓
+          </div>
           <div>
-            <h4 className={`text-sm font-bold ${textColor}`}>Semester Attendance Filter</h4>
+            <h4 className={`text-sm font-bold ${textColor}`}>
+              Semester {currentUser?.semester || 'N/A'} Attendance Overview
+            </h4>
             <p className={`text-xs ${subTextColor}`}>
-              {selectedSemester && selectedSemester !== 'ALL' ? `Showing ${selectedSemester}th Semester data` : 'Showing all semester data'}
-              {currentUser?.semester && ` (Enrolled in ${currentUser.semester}th Sem)`}
+              Showing stats strictly for your enrolled semester ({currentUser?.semester || 'N/A'}). Update your profile semester to switch.
             </p>
           </div>
         </div>
-        <select
-          value={selectedSemester}
-          onChange={e => setSelectedSemester(e.target.value)}
-          className={`${inputBg} px-4 py-2 rounded-xl text-sm font-bold border outline-none cursor-pointer`}
-        >
-          <option value="ALL">🌐 All Semesters</option>
-          {['1', '2', '3', '4', '5', '6', '7', '8'].map(sem => (
-            <option key={sem} value={sem}>
-              Sem {sem} {currentUser?.semester === sem ? '⭐ (Current)' : ''}
-            </option>
-          ))}
-        </select>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -998,25 +989,32 @@ export default function StudentDashboard() {
       {view === 'history' && (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <Card className={`${cardBg} p-8`}>
-            <h2 className={`text-2xl font-bold ${textColor} mb-6`}>
-              Attendance History ({attendanceHistory.length} records)
-            </h2>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className={`text-2xl font-bold ${textColor}`}>
+                  Attendance History ({filteredHistory.length} records)
+                </h2>
+                <p className={`${subTextColor} text-sm mt-0.5`}>
+                  Showing attendance for Semester {currentUser?.semester || 'N/A'}
+                </p>
+              </div>
+            </div>
 
-            {attendanceHistory.length === 0 ? (
+            {filteredHistory.length === 0 ? (
               <div className="text-center py-8">
                 <Calendar className={`w-16 h-16 ${subTextColor} mx-auto mb-4`} />
-                <p className={subTextColor}>No attendance records yet</p>
+                <p className={subTextColor}>No attendance records for Semester {currentUser?.semester || 'N/A'}</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {[...attendanceHistory].reverse().map((record, index) => (
+                {[...filteredHistory].reverse().map((record, index) => (
                   <Card key={index} className={`${isDarkMode ? 'bg-white/5' : 'bg-gray-50'} p-4`}>
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
                         <h3 className={`font-bold ${textColor}`}>{record.subject}</h3>
                         <p className={`${subTextColor} text-sm`}>{record.className}</p>
                         <p className={`${subTextColor} text-xs mt-1`}>
-                          📅 {record.date}
+                          📅 {record.date} • Sem {record.semester || currentUser?.semester || 'N/A'}
                         </p>
                       </div>
                       {record.status === 'PRESENT' ? (
