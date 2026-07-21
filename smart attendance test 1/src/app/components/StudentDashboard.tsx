@@ -159,8 +159,8 @@ export default function StudentDashboard() {
     const id = getOrCreateDeviceId(currentUser.usn);
     setDeviceId(id);
 
-    const loadData = async () => {
-      // 1. Fetch from MongoDB backend to get official attendance records with semester metadata
+    // Initial fetch from backend to get official history
+    const loadBackendHistory = async () => {
       try {
         const backendRes = await attendanceAPI.getStudentHistory(currentUser.usn);
         if (backendRes.success && Array.isArray(backendRes.history) && backendRes.history.length > 0) {
@@ -168,35 +168,44 @@ export default function StudentDashboard() {
             ...r,
             semester: r.semester || currentUser?.semester || '',
           }));
-          setAttendanceHistory(tagged);
-          return;
+          setAttendanceHistory(prev => {
+            const map = new Map<string, any>();
+            tagged.forEach((item: any) => map.set(item.id || item.sessionId || `${item.date}_${item.subject}`, item));
+            prev.forEach((item: any) => map.set(item.id || item.sessionId || `${item.date}_${item.subject}`, item));
+            return Array.from(map.values());
+          });
         }
       } catch (err) {
-        console.log('[StudentDashboard] Backend history fetch error, falling back to RTDB');
+        console.log('[StudentDashboard] Backend history fetch fallback to RTDB');
       }
-
-      // 2. Real-time fallback from RTDB
-      const studentRef = ref(rtdb, `student_attendance/${currentUser.usn}`);
-      const unsubscribe = onValue(studentRef, (snapshot: any) => {
-        try {
-          if (snapshot.exists()) {
-            const rawRecords: any[] = Object.values(snapshot.val());
-            const tagged = rawRecords.map((r: any) => ({
-              ...r,
-              semester: r.semester || currentUser?.semester || '',
-            }));
-            setAttendanceHistory(tagged);
-          } else {
-            setAttendanceHistory([]);
-          }
-        } catch (err) {
-          console.error('[StudentDashboard] Error processing RTDB history:', err);
-        }
-      });
-      return () => unsubscribe();
     };
+    loadBackendHistory();
 
-    loadData();
+    // Real-time continuous listener from RTDB - fires instantly when attendance is marked
+    const studentRef = ref(rtdb, `student_attendance/${currentUser.usn}`);
+    const unsubscribe = onValue(studentRef, (snapshot: any) => {
+      try {
+        if (snapshot.exists()) {
+          const rawRecords: any[] = Object.values(snapshot.val());
+          const tagged = rawRecords.map((r: any) => ({
+            ...r,
+            semester: r.semester || currentUser?.semester || '',
+          }));
+          setAttendanceHistory(prev => {
+            const map = new Map<string, any>();
+            prev.forEach((item: any) => map.set(item.id || item.sessionId || `${item.date}_${item.subject}`, item));
+            tagged.forEach((item: any) => map.set(item.id || item.sessionId || `${item.date}_${item.subject}`, item));
+            return Array.from(map.values());
+          });
+        }
+      } catch (err) {
+        console.error('[StudentDashboard] Error processing RTDB history:', err);
+      }
+    }, (err: Error) => {
+      console.error('[StudentDashboard] Real-time listener error:', err);
+    });
+
+    return () => unsubscribe();
   }, [currentUser?.usn]);
 
   // Dynamically calculate attendance stats & filter history based on selected semester
@@ -466,6 +475,17 @@ export default function StudentDashboard() {
           await update(ref(rtdb, `session_devices/${session.sessionId}`), {
             [studentUsn]: { usn: studentUsn, deviceId: localStorage.getItem(`device_id_${studentUsn}`), markedAt: new Date().toISOString() }
           });
+          await set(ref(rtdb, `student_attendance/${studentUsn}/${session.sessionId}`), {
+            id: session.sessionId,
+            sessionId: session.sessionId,
+            subject: session.subject,
+            className: session.className,
+            branch: session.branch,
+            semester: session.semester || currentUser?.semester || '',
+            date: session.date || new Date().toISOString().split('T')[0],
+            year: session.year || new Date().getFullYear().toString(),
+            status: 'PRESENT',
+          });
           success = true;
           break;
         } catch (retryErr) {
@@ -577,6 +597,17 @@ export default function StudentDashboard() {
           // Mark student as submitted for this session
           await update(ref(rtdb, `session_devices/${session.sessionId}`), {
             [studentUsn]: { usn: studentUsn, deviceId: localStorage.getItem(`device_id_${studentUsn}`), markedAt: new Date().toISOString() }
+          });
+          await set(ref(rtdb, `student_attendance/${studentUsn}/${session.sessionId}`), {
+            id: session.sessionId,
+            sessionId: session.sessionId,
+            subject: session.subject,
+            className: session.className,
+            branch: session.branch,
+            semester: session.semester || currentUser?.semester || '',
+            date: session.date || new Date().toISOString().split('T')[0],
+            year: session.year || new Date().getFullYear().toString(),
+            status: 'PRESENT',
           });
           success = true;
           break;
