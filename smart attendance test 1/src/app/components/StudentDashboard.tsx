@@ -98,6 +98,7 @@ export default function StudentDashboard() {
 
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
   const [filteredHistory, setFilteredHistory] = useState<AttendanceRecord[]>([]);
+  const [selectedSemester, setSelectedSemester] = useState<string>('');
   const [totalClasses, setTotalClasses] = useState(0);
   const [attendedClasses, setAttendedClasses] = useState(0);
   const [attendancePercentage, setAttendancePercentage] = useState(0);
@@ -105,6 +106,13 @@ export default function StudentDashboard() {
   const [activeSession, setActiveSession] = useState<any>(null);
 
   const [studentLeaves, setStudentLeaves] = useState<any[]>([]);
+
+  // Sync selectedSemester with currentUser's current enrolled semester
+  useEffect(() => {
+    if (currentUser?.semester) {
+      setSelectedSemester(currentUser.semester);
+    }
+  }, [currentUser?.semester]);
 
   const fetchStudentLeaves = async () => {
     try {
@@ -167,14 +175,19 @@ export default function StudentDashboard() {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // Dynamically calculate attendance stats & filter history based strictly on student's current profile semester
+  // Dynamically calculate attendance stats & filter history based on selected semester
   useEffect(() => {
-    const currentSemNorm = normalizeSem(currentUser?.semester);
-    const filtered = currentSemNorm
+    const targetSem = selectedSemester || currentUser?.semester || '';
+    const targetSemNorm = normalizeSem(targetSem);
+
+    const filtered = (targetSemNorm && selectedSemester !== 'ALL')
       ? attendanceHistory.filter((h: any) => {
           const recSemNorm = normalizeSem(h.semester);
-          if (!recSemNorm) return true;
-          return recSemNorm === currentSemNorm;
+          if (!recSemNorm) {
+            // Untagged legacy record: show only when inspecting student's currently enrolled semester
+            return targetSemNorm === normalizeSem(currentUser?.semester);
+          }
+          return recSemNorm === targetSemNorm;
         })
       : attendanceHistory;
 
@@ -197,7 +210,7 @@ export default function StudentDashboard() {
       percentage: Math.round((data.attended / data.total) * 100 * 10) / 10,
     }));
     setSubjectStats(stats);
-  }, [attendanceHistory, currentUser?.semester]);
+  }, [attendanceHistory, selectedSemester, currentUser?.semester]);
 
   // QR Scanner using browser camera + jsQR via CDN
   const startQRScanner = async () => {
@@ -653,21 +666,33 @@ export default function StudentDashboard() {
         </motion.div>
       ))}
 
-      {/* Current Semester Badge */}
-      <div className={`p-4 rounded-2xl border flex items-center justify-between gap-3 ${cardBg}`}>
+      {/* Semester Switcher Bar */}
+      <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-3 ${cardBg}`}>
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-lg">
             🎓
           </div>
           <div>
             <h4 className={`text-sm font-bold ${textColor}`}>
-              Semester {currentUser?.semester || 'N/A'} Attendance Overview
+              Semester View: {selectedSemester && selectedSemester !== 'ALL' ? `Sem ${selectedSemester}` : 'All Semesters'}
             </h4>
             <p className={`text-xs ${subTextColor}`}>
-              Showing stats strictly for your enrolled semester ({currentUser?.semester || 'N/A'}). Update your profile semester to switch.
+              Enrolled in Semester {currentUser?.semester || 'N/A'}. Select any semester to view history.
             </p>
           </div>
         </div>
+        <select
+          value={selectedSemester}
+          onChange={e => setSelectedSemester(e.target.value)}
+          className={`${inputBg} px-4 py-2 rounded-xl text-sm font-bold border outline-none cursor-pointer`}
+        >
+          <option value="ALL">🌐 All Semesters</option>
+          {['1', '2', '3', '4', '5', '6', '7', '8'].map(sem => (
+            <option key={sem} value={sem}>
+              Sem {sem} {normalizeSem(currentUser?.semester) === sem ? '⭐ (Current)' : ''}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
