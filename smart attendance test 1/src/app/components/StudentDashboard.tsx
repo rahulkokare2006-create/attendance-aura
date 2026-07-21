@@ -171,7 +171,11 @@ export default function StudentDashboard() {
   useEffect(() => {
     const currentSemNorm = normalizeSem(currentUser?.semester);
     const filtered = currentSemNorm
-      ? attendanceHistory.filter((h: any) => !h.semester || normalizeSem(h.semester) === currentSemNorm)
+      ? attendanceHistory.filter((h: any) => {
+          const recSemNorm = normalizeSem(h.semester);
+          if (!recSemNorm) return false;
+          return recSemNorm === currentSemNorm;
+        })
       : attendanceHistory;
 
     setFilteredHistory(filtered);
