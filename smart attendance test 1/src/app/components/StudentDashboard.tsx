@@ -170,7 +170,7 @@ export default function StudentDashboard() {
         if (backendRes.success && Array.isArray(backendRes.history) && backendRes.history.length > 0) {
           const tagged = backendRes.history.map((r: any) => ({
             ...r,
-            semester: r.semester || currentUser?.semester || '',
+            semester: String(r.semester || r.classSemester || '').trim(),
           }));
           setAttendanceHistory(prev => {
             const map = new Map<string, any>();
@@ -193,7 +193,7 @@ export default function StudentDashboard() {
           const rawRecords: any[] = Object.values(snapshot.val());
           const tagged = rawRecords.map((r: any) => ({
             ...r,
-            semester: r.semester || currentUser?.semester || '',
+            semester: String(r.semester || r.classSemester || '').trim(),
           }));
           setAttendanceHistory(prev => {
             const map = new Map<string, any>();
@@ -490,7 +490,7 @@ export default function StudentDashboard() {
             subject: session.subject,
             className: session.className,
             branch: session.branch,
-            semester: session.semester || currentUser?.semester || '',
+            semester: String(session.semester || '').trim(),
             date: session.date || new Date().toISOString().split('T')[0],
             year: session.year || new Date().getFullYear().toString(),
             status: 'PRESENT',
@@ -613,7 +613,7 @@ export default function StudentDashboard() {
             subject: session.subject,
             className: session.className,
             branch: session.branch,
-            semester: session.semester || currentUser?.semester || '',
+            semester: String(session.semester || '').trim(),
             date: session.date || new Date().toISOString().split('T')[0],
             year: session.year || new Date().getFullYear().toString(),
             status: 'PRESENT',

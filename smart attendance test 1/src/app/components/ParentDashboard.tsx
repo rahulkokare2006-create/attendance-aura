@@ -103,7 +103,7 @@ export default function ParentDashboard() {
             if (backendRes.success && Array.isArray(backendRes.history) && backendRes.history.length > 0) {
               const tagged = backendRes.history.map((r: any) => ({
                 ...r,
-                semester: r.semester || (student as any).semester || '',
+                semester: String(r.semester || r.classSemester || '').trim(),
               }));
               setAttendanceHistory(prev => {
                 const map = new Map<string, any>();
@@ -124,7 +124,7 @@ export default function ParentDashboard() {
                 const rawRecords: any[] = Object.values(snapshot.val());
                 const tagged = rawRecords.map((r: any) => ({
                   ...r,
-                  semester: r.semester || (student as any).semester || '',
+                  semester: String(r.semester || r.classSemester || '').trim(),
                 }));
                 setAttendanceHistory(prev => {
                   const map = new Map<string, any>();
