@@ -79,6 +79,9 @@ export default function StudentDashboard() {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const scanIntervalRef = React.useRef<any>(null);
+  // Always holds the latest currentUser - used inside stale RTDB closures
+  const currentUserRef = React.useRef(currentUser);
+  useEffect(() => { currentUserRef.current = currentUser; });
   const [submitting, setSubmitting] = useState(false);
   const [step, setStep] = useState<'otp' | 'gps' | 'done'>('otp');
   const [gpsStatus, setGpsStatus] = useState<'idle' | 'checking' | 'passed' | 'failed'>('idle');
@@ -164,13 +167,18 @@ export default function StudentDashboard() {
 
     const getRecordKey = (item: any) => item.sessionId || item.id || `${item.date}_${item.subject}`;
     const getRecordSem = (r: any) => {
+      // Priority 1: explicit semester field on the record
       if (r.semester && String(r.semester).trim()) return String(r.semester).trim();
+      // Priority 2: classSemester field
       if (r.classSemester && String(r.classSemester).trim()) return String(r.classSemester).trim();
+      // Priority 3: extract digits that look like a semester number from className
       if (r.className) {
-        const semMatch = String(r.className).match(/(?:sem|semester|class|sec)?\s*(\d+)/i);
+        const semMatch = String(r.className).match(/(?:sem|semester|class|sec)\s*(\d+)/i);
         if (semMatch && semMatch[1]) return semMatch[1];
       }
-      return String(currentUser?.semester || '').trim();
+      // Fallback: use currentUserRef (always fresh, not stale) so changing semester
+      // doesn't cross-contaminate old records that genuinely have no semester stored
+      return String(currentUserRef.current?.semester || '').trim();
     };
 
     // Initial fetch from backend to get official history
