@@ -1103,7 +1103,7 @@ export default function StudentDashboard() {
                         <h3 className={`font-bold ${textColor}`}>{record.subject}</h3>
                         <p className={`${subTextColor} text-sm`}>{record.className}</p>
                         <p className={`${subTextColor} text-xs mt-1`}>
-                          📅 {record.date} • Sem {record.semester || currentUser?.semester || 'N/A'}
+                          📅 {record.date} • Sem {record.semester || 'N/A'}
                         </p>
                       </div>
                       {record.status === 'PRESENT' ? (
