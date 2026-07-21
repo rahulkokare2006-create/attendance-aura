@@ -162,6 +162,13 @@ export default function StudentDashboard() {
     setDeviceId(id);
 
     const getRecordKey = (item: any) => item.sessionId || item.id || `${item.date}_${item.subject}`;
+    const getRecordSem = (r: any) => {
+      if (r.semester && String(r.semester).trim()) return String(r.semester).trim();
+      if (r.classSemester && String(r.classSemester).trim()) return String(r.classSemester).trim();
+      const parsed = normalizeSem(r.className);
+      if (parsed) return parsed;
+      return String(currentUser?.semester || '').trim();
+    };
 
     // Initial fetch from backend to get official history
     const loadBackendHistory = async () => {
@@ -170,7 +177,7 @@ export default function StudentDashboard() {
         if (backendRes.success && Array.isArray(backendRes.history) && backendRes.history.length > 0) {
           const tagged = backendRes.history.map((r: any) => ({
             ...r,
-            semester: String(r.semester || r.classSemester || '').trim(),
+            semester: getRecordSem(r),
           }));
           setAttendanceHistory(prev => {
             const map = new Map<string, any>();
@@ -193,7 +200,7 @@ export default function StudentDashboard() {
           const rawRecords: any[] = Object.values(snapshot.val());
           const tagged = rawRecords.map((r: any) => ({
             ...r,
-            semester: String(r.semester || r.classSemester || '').trim(),
+            semester: getRecordSem(r),
           }));
           setAttendanceHistory(prev => {
             const map = new Map<string, any>();
@@ -484,16 +491,24 @@ export default function StudentDashboard() {
           await update(ref(rtdb, `session_devices/${session.sessionId}`), {
             [studentUsn]: { usn: studentUsn, deviceId: localStorage.getItem(`device_id_${studentUsn}`), markedAt: new Date().toISOString() }
           });
-          await set(ref(rtdb, `student_attendance/${studentUsn}/${session.sessionId}`), {
+          const newRecord = {
             id: session.sessionId,
             sessionId: session.sessionId,
             subject: session.subject,
             className: session.className,
             branch: session.branch,
-            semester: String(session.semester || '').trim(),
+            semester: String(session.semester || currentUser?.semester || '').trim(),
             date: session.date || new Date().toISOString().split('T')[0],
             year: session.year || new Date().getFullYear().toString(),
             status: 'PRESENT',
+          };
+          await set(ref(rtdb, `student_attendance/${studentUsn}/${session.sessionId}`), newRecord);
+          setAttendanceHistory(prev => {
+            const map = new Map<string, any>();
+            const getKey = (item: any) => item.sessionId || item.id || `${item.date}_${item.subject}`;
+            prev.forEach((item: any) => map.set(getKey(item), item));
+            map.set(getKey(newRecord), newRecord);
+            return Array.from(map.values());
           });
           success = true;
           break;
@@ -607,16 +622,24 @@ export default function StudentDashboard() {
           await update(ref(rtdb, `session_devices/${session.sessionId}`), {
             [studentUsn]: { usn: studentUsn, deviceId: localStorage.getItem(`device_id_${studentUsn}`), markedAt: new Date().toISOString() }
           });
-          await set(ref(rtdb, `student_attendance/${studentUsn}/${session.sessionId}`), {
+          const newRecord = {
             id: session.sessionId,
             sessionId: session.sessionId,
             subject: session.subject,
             className: session.className,
             branch: session.branch,
-            semester: String(session.semester || '').trim(),
+            semester: String(session.semester || currentUser?.semester || '').trim(),
             date: session.date || new Date().toISOString().split('T')[0],
             year: session.year || new Date().getFullYear().toString(),
             status: 'PRESENT',
+          };
+          await set(ref(rtdb, `student_attendance/${studentUsn}/${session.sessionId}`), newRecord);
+          setAttendanceHistory(prev => {
+            const map = new Map<string, any>();
+            const getKey = (item: any) => item.sessionId || item.id || `${item.date}_${item.subject}`;
+            prev.forEach((item: any) => map.set(getKey(item), item));
+            map.set(getKey(newRecord), newRecord);
+            return Array.from(map.values());
           });
           success = true;
           break;
