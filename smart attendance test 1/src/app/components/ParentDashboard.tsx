@@ -95,6 +95,8 @@ export default function ParentDashboard() {
           // Load attendance data in real-time with error handling
           const studentUsn = (student as any).usn || '';
 
+          const getRecordKey = (item: any) => item.sessionId || item.id || `${item.date}_${item.subject}`;
+
           // 1. Try fetching official backend history with semester metadata
           try {
             const backendRes = await attendanceAPI.getStudentHistory(studentUsn);
@@ -103,8 +105,12 @@ export default function ParentDashboard() {
                 ...r,
                 semester: r.semester || (student as any).semester || '',
               }));
-              setAttendanceHistory(tagged);
-              return;
+              setAttendanceHistory(prev => {
+                const map = new Map<string, any>();
+                tagged.forEach((item: any) => map.set(getRecordKey(item), item));
+                prev.forEach((item: any) => map.set(getRecordKey(item), { ...map.get(getRecordKey(item)), ...item }));
+                return Array.from(map.values());
+              });
             }
           } catch (e) {
             console.log('[ParentDashboard] Backend fetch fallback to RTDB');
@@ -120,9 +126,12 @@ export default function ParentDashboard() {
                   ...r,
                   semester: r.semester || (student as any).semester || '',
                 }));
-                setAttendanceHistory(tagged);
-              } else {
-                setAttendanceHistory([]);
+                setAttendanceHistory(prev => {
+                  const map = new Map<string, any>();
+                  prev.forEach((item: any) => map.set(getRecordKey(item), item));
+                  tagged.forEach((item: any) => map.set(getRecordKey(item), { ...map.get(getRecordKey(item)), ...item }));
+                  return Array.from(map.values());
+                });
               }
             } catch (err) {
               console.error('[ParentDashboard] Error processing attendance history:', err);

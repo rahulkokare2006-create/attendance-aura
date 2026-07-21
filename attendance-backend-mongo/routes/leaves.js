@@ -62,8 +62,8 @@ router.get('/inbox', protect, restrictTo('manager'), async (req, res) => {
   }
 });
 
-// GET /api/leaves/notifications - Teacher notifications (approved leaves)
-router.get('/notifications', protect, restrictTo('teacher'), async (req, res) => {
+// GET /api/leaves/notifications - Teacher/Manager notifications (approved leaves)
+router.get('/notifications', protect, restrictTo('teacher', 'manager', 'admin'), async (req, res) => {
   try {
     const dept = req.user.department || req.user.branch || '__none__';
     const leaves = await LeaveApplication.find({

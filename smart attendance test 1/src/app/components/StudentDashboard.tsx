@@ -161,6 +161,8 @@ export default function StudentDashboard() {
     const id = getOrCreateDeviceId(currentUser.usn);
     setDeviceId(id);
 
+    const getRecordKey = (item: any) => item.sessionId || item.id || `${item.date}_${item.subject}`;
+
     // Initial fetch from backend to get official history
     const loadBackendHistory = async () => {
       try {
@@ -172,8 +174,8 @@ export default function StudentDashboard() {
           }));
           setAttendanceHistory(prev => {
             const map = new Map<string, any>();
-            tagged.forEach((item: any) => map.set(item.id || item.sessionId || `${item.date}_${item.subject}`, item));
-            prev.forEach((item: any) => map.set(item.id || item.sessionId || `${item.date}_${item.subject}`, item));
+            tagged.forEach((item: any) => map.set(getRecordKey(item), item));
+            prev.forEach((item: any) => map.set(getRecordKey(item), { ...map.get(getRecordKey(item)), ...item }));
             return Array.from(map.values());
           });
         }
@@ -195,8 +197,8 @@ export default function StudentDashboard() {
           }));
           setAttendanceHistory(prev => {
             const map = new Map<string, any>();
-            prev.forEach((item: any) => map.set(item.id || item.sessionId || `${item.date}_${item.subject}`, item));
-            tagged.forEach((item: any) => map.set(item.id || item.sessionId || `${item.date}_${item.subject}`, item));
+            prev.forEach((item: any) => map.set(getRecordKey(item), item));
+            tagged.forEach((item: any) => map.set(getRecordKey(item), { ...map.get(getRecordKey(item)), ...item }));
             return Array.from(map.values());
           });
         }
