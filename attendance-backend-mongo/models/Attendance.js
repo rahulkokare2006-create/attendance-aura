@@ -8,6 +8,7 @@ const attendanceSchema = new mongoose.Schema({
   branch: { type: String, required: true },
   semester: { type: String, required: true },
   section: { type: String, required: true },
+  batch: { type: String, default: '' },
   date: { type: String, required: true }, // YYYY-MM-DD
   year: { type: String, required: true },
   records: [{

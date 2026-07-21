@@ -30,6 +30,7 @@ interface ClassData {
   branch: string;
   semester: string;
   section: string;
+  batch?: string;
   radius: number;
   classLength?: number;
   classWidth?: number;
@@ -51,6 +52,10 @@ interface AttendanceSession {
   classId: string;
   className: string;
   subject: string;
+  branch?: string;
+  semester?: string;
+  section?: string;
+  batch?: string;
   date: string;
   year: string;
   startTime: string;
@@ -299,6 +304,7 @@ export default function TeacherDashboard() {
   const [classBranch, setClassBranch] = useState('');
   const [classSemester, setClassSemester] = useState('');
   const [classSection, setClassSection] = useState('');
+  const [classBatch, setClassBatch] = useState('');
   const [classRadius, setClassRadius] = useState('50');
   const [classLength, setClassLength] = useState('10');
   const [classWidth, setClassWidth] = useState('8');
@@ -504,6 +510,7 @@ export default function TeacherDashboard() {
       setClassBranch(editingClass.branch);
       setClassSemester(editingClass.semester);
       setClassSection(editingClass.section);
+      setClassBatch(editingClass.batch || '');
       setClassLength(String(editingClass.classLength || 10));
       setClassWidth(String(editingClass.classWidth || 8));
       setUploadedStudents(editingClass.students);
@@ -551,6 +558,7 @@ export default function TeacherDashboard() {
     setClassSubject('');
     setClassBranch('');
     setClassSemester('');
+    setClassBatch('');
     setEditingClass(null);
     setClassSection('');
     setClassRadius('50');
@@ -558,8 +566,8 @@ export default function TeacherDashboard() {
   };
 
   const handleCreateClass = () => {
-    if (!className || !classSubject || !classBranch || !classSemester || !classSection) {
-      toast.error('Please fill in all required fields');
+    if (!className || !classSubject || !classBranch || !classSemester || !classSection || !classBatch) {
+      toast.error('Please fill in all required fields (including Admission Batch)');
       return;
     }
     if (!editingClass && uploadedStudents.length === 0) {
@@ -578,6 +586,7 @@ export default function TeacherDashboard() {
         branch: classBranch,
         semester: classSemester,
         section: classSection,
+        batch: classBatch,
         radius: parseInt(classRadius),
         classLength: classLength ? parseFloat(classLength) : 10,
         classWidth: classWidth ? parseFloat(classWidth) : 8,
@@ -599,6 +608,7 @@ export default function TeacherDashboard() {
         branch: classBranch,
         semester: classSemester,
         section: classSection,
+        batch: classBatch,
         radius: parseInt(classRadius),
         classLength: classLength ? parseFloat(classLength) : 10,
         classWidth: classWidth ? parseFloat(classWidth) : 8,
@@ -755,6 +765,10 @@ export default function TeacherDashboard() {
       classId: selectedClass.id,
       className: selectedClass.name,
       subject: selectedClass.subject,
+      branch: selectedClass.branch,
+      semester: selectedClass.semester,
+      section: selectedClass.section,
+      batch: selectedClass.batch || '',
       date: now.toISOString().split('T')[0],
       year: now.getFullYear().toString(),
       startTime: now.toLocaleTimeString(),
@@ -796,6 +810,7 @@ export default function TeacherDashboard() {
         semester: selectedClass.semester,
         section: selectedClass.section,
         branch: selectedClass.branch,
+        batch: selectedClass.batch || '',
         teacherLat,
         teacherLng,
         gpsRadius,
@@ -1445,7 +1460,7 @@ export default function TeacherDashboard() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                 <div>
                   <Label className={`${textColor} mb-2 block`}>Branch *</Label>
                   <select value={classBranch} onChange={(e) => setClassBranch(e.target.value)}
@@ -1457,10 +1472,10 @@ export default function TeacherDashboard() {
                     <option value="ISE">ISE</option>
                   </select>
                   <Input type="text" value={classBranch} onChange={(e) => setClassBranch(e.target.value)}
-                    placeholder="Or type custom branch" className={`${inputBg} mt-2`} autoComplete="off" />
+                    placeholder="Or custom" className={`${inputBg} mt-2`} autoComplete="off" />
                 </div>
                 <div>
-                  <Label className={`${textColor} mb-2 block`}>Semester *</Label>
+                  <Label className={`${textColor} mb-2 block`}>Current Sem *</Label>
                   <select value={classSemester} onChange={(e) => setClassSemester(e.target.value)}
                     className={`${inputBg} w-full p-2.5 rounded-lg border`}>
                     <option value="">Select Sem</option>
@@ -1475,7 +1490,13 @@ export default function TeacherDashboard() {
                     {['A','B','C','D','E','F'].map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                   <Input type="text" value={classSection} onChange={(e) => setClassSection(e.target.value)}
-                    placeholder="Or type custom" className={`${inputBg} mt-2`} autoComplete="off" />
+                    placeholder="Or custom" className={`${inputBg} mt-2`} autoComplete="off" />
+                </div>
+                <div>
+                  <Label className={`${textColor} mb-2 block`}>Admission Batch *</Label>
+                  <Input type="text" value={classBatch} onChange={(e) => setClassBatch(e.target.value)}
+                    placeholder="e.g., 2024" className={inputBg} autoComplete="off" />
+                  <p className="text-[10px] text-amber-400 mt-1">Fixed admission year</p>
                 </div>
               </div>
 

@@ -50,6 +50,7 @@ router.post('/start-session', protect, restrictTo('teacher', 'manager'), async (
       sessionId, teacherId: req.user._id, classId,
       className: cls.name, subject: cls.subject,
       branch: cls.branch, semester: cls.semester, section: cls.section,
+      batch: cls.batch || '',
       otp, qrData: qrData || '', geoFencingEnabled: geoFencingEnabled || false,
       teacherLat: teacherLat || null, teacherLng: teacherLng || null,
       gpsRadius: gpsRadius || 50, records, markedStudents,
@@ -150,12 +151,21 @@ router.post('/mark', protect, restrictTo('student'), async (req, res) => {
       }
     }
 
-    // Check branch/semester/section case-insensitively with space trimming
+    const normalizeSem = (sem) => {
+      if (!sem) return '';
+      const match = String(sem).match(/\d+/);
+      return match ? match[0] : String(sem).trim().toLowerCase();
+    };
+
+    // Check batch/semester/branch/section validation
+    if (session.batch && req.user.batch && normalizeSem(session.batch) !== normalizeSem(req.user.batch)) {
+      return res.status(400).json({ error: `❌ Admission Batch mismatch! Session is for Batch ${session.batch} but your profile is in Batch ${req.user.batch}` });
+    }
+    if (normalizeSem(session.semester) !== normalizeSem(req.user.semester)) {
+      return res.status(400).json({ error: `❌ Semester mismatch! Session is for Semester ${session.semester} but your current semester is Semester ${req.user.semester}` });
+    }
     if (session.branch?.trim().toUpperCase() !== req.user.branch?.trim().toUpperCase()) {
       return res.status(400).json({ error: `❌ Branch mismatch! Session is for ${session.branch} but you are in ${req.user.branch}` });
-    }
-    if (session.semester?.trim().toUpperCase() !== req.user.semester?.trim().toUpperCase()) {
-      return res.status(400).json({ error: `❌ Semester mismatch! Session is for Sem ${session.semester} but you are in Sem ${req.user.semester}` });
     }
     if (session.section?.trim().toUpperCase() !== req.user.section?.trim().toUpperCase()) {
       return res.status(400).json({ error: `❌ Section mismatch! Session is for Section ${session.section} but you are in Section ${req.user.section}` });
@@ -339,6 +349,7 @@ router.post('/end-session', protect, restrictTo('teacher', 'manager'), async (re
         branch: session.branch,
         semester: session.semester,
         section: session.section,
+        batch: session.batch || cls?.batch || '',
         date: session.date,
         year: new Date().getFullYear().toString(),
         records,

@@ -9,6 +9,7 @@ const activeSessionSchema = new mongoose.Schema({
   branch: { type: String, required: true },
   semester: { type: String, required: true },
   section: { type: String, required: true },
+  batch: { type: String, default: '' },
   otp: { type: String, required: true },
   qrData: { type: String, default: '' },
   geoFencingEnabled: { type: Boolean, default: false },

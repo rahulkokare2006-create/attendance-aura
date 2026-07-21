@@ -131,14 +131,16 @@ export default function StudentDashboard() {
     }
   }, [currentUser]);
 
-  // Real-time active session listener for student's branch/semester/section
+  // Real-time active session listener for student's branch/semester/section/batch
   useEffect(() => {
     const activeRef = ref(rtdb, 'active_session');
     const unsubscribe = onValue(activeRef, (snap: any) => {
       if (snap.exists()) {
         const session = snap.val();
+        const batchMatch = !session.batch || !currentUser?.batch || normalizeSem(session.batch) === normalizeSem(currentUser?.batch);
         if (
           session &&
+          batchMatch &&
           session.branch?.trim().toUpperCase() === currentUser?.branch?.trim().toUpperCase() &&
           normalizeSem(session.semester) === normalizeSem(currentUser?.semester) &&
           session.section?.trim().toUpperCase() === currentUser?.section?.trim().toUpperCase()
@@ -338,21 +340,26 @@ export default function StudentDashboard() {
         return; 
       }
       const session = sessionSnapshot.val();
-      console.log('[OTP] Session data:', { sessionId: session.sessionId, branch: session.branch, semester: session.semester, section: session.section });
-      console.log('[OTP] Student data:', { branch: currentUser?.branch, semester: currentUser?.semester, section: currentUser?.section });
+      console.log('[OTP] Session data:', { sessionId: session.sessionId, branch: session.branch, semester: session.semester, section: session.section, batch: session.batch });
+      console.log('[OTP] Student data:', { branch: currentUser?.branch, semester: currentUser?.semester, section: currentUser?.section, batch: currentUser?.batch });
 
+      // Check admission batch match
+      if (session.batch && currentUser?.batch && normalizeSem(session.batch) !== normalizeSem(currentUser.batch)) {
+        toast.error(`❌ Admission Batch Mismatch! Session is for Batch ${session.batch} but your profile is registered in Batch ${currentUser.batch}.`);
+        setSubmitting(false); return;
+      }
+      // Check semester match
+      if (normalizeSem(currentUser?.semester) !== normalizeSem(session.semester)) { 
+        toast.error(`❌ Semester Mismatch! Session is for Semester ${session.semester} but your current semester is Semester ${currentUser?.semester}.`); 
+        setSubmitting(false); return; 
+      }
       // Check branch match
-      if (currentUser?.branch !== session.branch) { 
+      if (currentUser?.branch?.trim().toUpperCase() !== session.branch?.trim().toUpperCase()) { 
         toast.error(`❌ Branch Mismatch! Session is for ${session.branch} but you are in ${currentUser?.branch}. Contact your teacher.`); 
         setSubmitting(false); return; 
       }
-      // Check semester match
-      if (currentUser?.semester !== session.semester) { 
-        toast.error(`❌ Semester Mismatch! Session is for Semester ${session.semester} but you are in Semester ${currentUser?.semester}. Contact your teacher.`); 
-        setSubmitting(false); return; 
-      }
       // Check section match
-      if (currentUser?.section !== session.section) { 
+      if (currentUser?.section?.trim().toUpperCase() !== session.section?.trim().toUpperCase()) { 
         toast.error(`❌ Section Mismatch! Session is for Section ${session.section} but you are in Section ${currentUser?.section}. Contact your teacher.`); 
         setSubmitting(false); return; 
       }
