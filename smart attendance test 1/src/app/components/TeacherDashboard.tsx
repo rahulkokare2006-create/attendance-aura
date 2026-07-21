@@ -289,7 +289,12 @@ export default function TeacherDashboard() {
     try {
       const res = await leavesAPI.getNotifications();
       if (res.success && res.leaves) {
-        setApprovedLeaves(res.leaves.filter((l: any) => !l.viewedByTeacher));
+        const role = currentUser?.role;
+        // Manager sees unviewed by manager, teacher sees unviewed by teacher
+        const unviewed = res.leaves.filter((l: any) =>
+          role === 'manager' ? !l.viewedByManager : !l.viewedByTeacher
+        );
+        setApprovedLeaves(unviewed);
       }
     } catch (err) {
       console.error('[TeacherDashboard] Error fetching leave notifications:', err);
@@ -466,25 +471,27 @@ export default function TeacherDashboard() {
 
   const fetchLeaveNotifications = async () => {
     try {
-      const snap = await get(ref(db, 'leave_notifications'));
-      if (snap.exists()) {
-        const all = Object.values(snap.val()) as any[];
-        const filtered = all.filter((l: any) => 
-          l.forTeachers && 
-          l.status === 'approved' &&
-          (
-            l.approvedBranch === currentUser?.department ||
-            l.studentBranch === currentUser?.department ||
-            l.approvedBranch === currentUser?.branch ||
-            l.studentBranch === currentUser?.branch
-          )
-        );
-        setLeaveNotifications(filtered.sort((a: any, b: any) => new Date(b.reviewedAt || b.submittedAt).getTime() - new Date(a.reviewedAt || a.submittedAt).getTime()));
+      const res = await leavesAPI.getNotifications();
+      if (res.success && res.leaves) {
+        const role = currentUser?.role;
+        const dept = currentUser?.department || currentUser?.branch || '';
+        // Filter to own branch/department and unviewed
+        const filtered = res.leaves.filter((l: any) => {
+          const branchMatch = !dept ||
+            l.approvedBranch === dept ||
+            l.studentBranch === dept;
+          const unviewed = role === 'manager' ? !l.viewedByManager : !l.viewedByTeacher;
+          return branchMatch && unviewed;
+        });
+        setLeaveNotifications(filtered.sort((a: any, b: any) =>
+          new Date(b.reviewedAt || b.submittedAt).getTime() - new Date(a.reviewedAt || a.submittedAt).getTime()
+        ));
       } else {
         setLeaveNotifications([]);
       }
     } catch (err) {
-      console.error(err);
+      console.error('[TeacherDashboard] fetchLeaveNotifications error:', err);
+      setLeaveNotifications([]);
     }
   };
 
@@ -1329,22 +1336,7 @@ export default function TeacherDashboard() {
         <Card
           onClick={async () => {
             setView('leave-notifications');
-            const snap = await get(ref(db, 'leave_notifications'));
-            if (snap.exists()) {
-              const all = Object.values(snap.val()) as any[];
-              // Show only approved leaves for teacher's branch
-              const filtered = all.filter((l: any) => 
-                l.forTeachers && 
-                l.status === 'approved' &&
-                (
-                  l.approvedBranch === currentUser?.department ||
-                  l.studentBranch === currentUser?.department ||
-                  l.approvedBranch === currentUser?.branch ||
-                  l.studentBranch === currentUser?.branch
-                )
-              );
-              setLeaveNotifications(filtered.sort((a: any, b: any) => new Date(b.reviewedAt || b.submittedAt).getTime() - new Date(a.reviewedAt || a.submittedAt).getTime()));
-            }
+            await fetchLeaveNotifications();
           }}
           className="bg-gradient-to-br from-yellow-500 to-orange-500 border-0 p-6 text-white cursor-pointer hover:scale-105 transition-transform relative"
         >
@@ -2628,12 +2620,15 @@ export default function TeacherDashboard() {
                     )}
                     <button onClick={async () => {
                       try {
-                        await leavesAPI.delete(leave.id);
-                        setLeaveNotifications(prev => prev.filter(l => l.id !== leave.id));
-                        toast.success('✅ Leave cleared from your inbox');
+                        const leaveId = leave._id || leave.id;
+                        // Acknowledge (mark viewed) instead of permanently deleting
+                        await leavesAPI.acknowledge(leaveId);
+                        setLeaveNotifications(prev => prev.filter(l => (l._id || l.id) !== leaveId));
+                        setApprovedLeaves(prev => prev.filter(l => (l._id || l.id) !== leaveId));
+                        toast.success('✅ Leave notification cleared');
                       } catch (err) {
-                        toast.error('❌ Failed to clear leave. Try again.');
-                        console.error('Error deleting leave:', err);
+                        toast.error('❌ Failed to clear notification. Try again.');
+                        console.error('Error clearing leave notification:', err);
                       }
                     }} className={`mt-3 px-3 py-1.5 rounded-lg text-xs ${isDarkMode ? 'bg-white/10 text-white/60 hover:bg-white/20' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'}`}>
                       ✕ Clear
