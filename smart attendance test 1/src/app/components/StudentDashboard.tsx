@@ -96,6 +96,33 @@ export default function StudentDashboard() {
   const [attendancePercentage, setAttendancePercentage] = useState(0);
   const [subjectStats, setSubjectStats] = useState<SubjectStats[]>([]);
   const [activeSession, setActiveSession] = useState<any>(null);
+  const [selectedSemester, setSelectedSemester] = useState<string>('');
+
+  const [studentLeaves, setStudentLeaves] = useState<any[]>([]);
+
+  // Sync selectedSemester with currentUser's current semester
+  useEffect(() => {
+    if (currentUser?.semester) {
+      setSelectedSemester(currentUser.semester);
+    }
+  }, [currentUser?.semester]);
+
+  const fetchStudentLeaves = async () => {
+    try {
+      const res = await leavesAPI.getMyLeaves();
+      if (res.success && res.leaves) {
+        setStudentLeaves(res.leaves);
+      }
+    } catch (err) {
+      console.error('[StudentDashboard] Error fetching student leaves:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser?.usn) {
+      fetchStudentLeaves();
+    }
+  }, [currentUser]);
 
   // Real-time active session listener for student's branch/semester/section
   useEffect(() => {
@@ -132,23 +159,6 @@ export default function StudentDashboard() {
       try {
         const parsedHistory: AttendanceRecord[] = snapshot.exists() ? Object.values(snapshot.val()) : [];
         setAttendanceHistory(parsedHistory);
-        setTotalClasses(parsedHistory.length);
-        const attended = parsedHistory.filter((h: any) => h.status === 'PRESENT').length;
-        setAttendedClasses(attended);
-        setAttendancePercentage(parsedHistory.length > 0 ? Math.round((attended / parsedHistory.length) * 100 * 10) / 10 : 0);
-        const subjectMap = new Map<string, { total: number; attended: number }>();
-        parsedHistory.forEach((record: any) => {
-          if (!record.subject) return; // Skip records with no subject
-          const existing = subjectMap.get(record.subject) || { total: 0, attended: 0 };
-          existing.total++;
-          if (record.status === 'PRESENT') existing.attended++;
-          subjectMap.set(record.subject, existing);
-        });
-        const stats: SubjectStats[] = Array.from(subjectMap.entries()).map(([subject, data]) => ({
-          subject, total: data.total, attended: data.attended,
-          percentage: Math.round((data.attended / data.total) * 100 * 10) / 10,
-        }));
-        setSubjectStats(stats);
       } catch (err) {
         console.error('[StudentDashboard] Error processing attendance history:', err);
       }
@@ -157,6 +167,33 @@ export default function StudentDashboard() {
     });
     return () => unsubscribe();
   }, [currentUser]);
+
+  // Dynamically calculate attendance stats based on selected/current semester
+  useEffect(() => {
+    const currentSem = selectedSemester || currentUser?.semester || '';
+    const filtered = currentSem && currentSem !== 'ALL'
+      ? attendanceHistory.filter((h: any) => !h.semester || String(h.semester).trim() === String(currentSem).trim())
+      : attendanceHistory;
+
+    setTotalClasses(filtered.length);
+    const attended = filtered.filter((h: any) => h.status === 'PRESENT').length;
+    setAttendedClasses(attended);
+    setAttendancePercentage(filtered.length > 0 ? Math.round((attended / filtered.length) * 100 * 10) / 10 : 0);
+
+    const subjectMap = new Map<string, { total: number; attended: number }>();
+    filtered.forEach((record: any) => {
+      if (!record.subject) return;
+      const existing = subjectMap.get(record.subject) || { total: 0, attended: 0 };
+      existing.total++;
+      if (record.status === 'PRESENT') existing.attended++;
+      subjectMap.set(record.subject, existing);
+    });
+    const stats: SubjectStats[] = Array.from(subjectMap.entries()).map(([subject, data]) => ({
+      subject, total: data.total, attended: data.attended,
+      percentage: Math.round((data.attended / data.total) * 100 * 10) / 10,
+    }));
+    setSubjectStats(stats);
+  }, [attendanceHistory, selectedSemester, currentUser?.semester]);
 
   // QR Scanner using browser camera + jsQR via CDN
   const startQRScanner = async () => {
@@ -566,6 +603,77 @@ export default function StudentDashboard() {
           </button>
         </motion.div>
       )}
+
+      {/* Leave Application Status Notifications */}
+      {studentLeaves.filter(l => (l.status === 'approved' || l.status === 'rejected') && !l.viewedByStudent).map(leave => (
+        <motion.div
+          key={leave._id || leave.id}
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className={`p-5 rounded-2xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-lg ${
+            leave.status === 'approved' ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'
+          }`}
+        >
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                leave.status === 'approved' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+              }`}>
+                Leave {leave.status === 'approved' ? 'Approved ✓' : 'Rejected ✕'}
+              </span>
+              <span className={`text-xs font-medium ${subTextColor}`}>HOD Review Notification</span>
+            </div>
+            <h4 className={`text-base font-bold ${textColor}`}>
+              {leave.studentName} ({leave.studentUSN}) — {leave.subject || 'Leave Application'}
+            </h4>
+            <p className={`text-sm ${subTextColor}`}>
+              📅 <strong>Dates:</strong> {leave.fromDate} to {leave.toDate} | 📝 <strong>Reason:</strong> {leave.reason}
+            </p>
+            {leave.reviewNote && (
+              <p className="text-xs text-amber-400 mt-1 italic">
+                💬 <strong>Review Note from HOD ({leave.reviewedBy || 'HOD'}):</strong> "{leave.reviewNote}"
+              </p>
+            )}
+          </div>
+          <button
+            onClick={async () => {
+              if (leave._id) {
+                await leavesAPI.acknowledge(leave._id);
+                fetchStudentLeaves();
+              }
+            }}
+            className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl border border-white/20 transition-all whitespace-nowrap"
+          >
+            Got it / Dismiss ✕
+          </button>
+        </motion.div>
+      ))}
+
+      {/* Semester Filter Header */}
+      <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-3 ${cardBg}`}>
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🎓</span>
+          <div>
+            <h4 className={`text-sm font-bold ${textColor}`}>Semester Attendance Filter</h4>
+            <p className={`text-xs ${subTextColor}`}>
+              {selectedSemester && selectedSemester !== 'ALL' ? `Showing ${selectedSemester}th Semester data` : 'Showing all semester data'}
+              {currentUser?.semester && ` (Enrolled in ${currentUser.semester}th Sem)`}
+            </p>
+          </div>
+        </div>
+        <select
+          value={selectedSemester}
+          onChange={e => setSelectedSemester(e.target.value)}
+          className={`${inputBg} px-4 py-2 rounded-xl text-sm font-bold border outline-none cursor-pointer`}
+        >
+          <option value="ALL">🌐 All Semesters</option>
+          {['1', '2', '3', '4', '5', '6', '7', '8'].map(sem => (
+            <option key={sem} value={sem}>
+              Sem {sem} {currentUser?.semester === sem ? '⭐ (Current)' : ''}
+            </option>
+          ))}
+        </select>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="bg-gradient-to-br from-blue-500 to-cyan-500 border-0 p-6 text-white">

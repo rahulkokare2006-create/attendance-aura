@@ -92,6 +92,8 @@ export const attendanceAPI = {
     apiFetch(`/api/attendance/${id}`, { method: 'PUT', body: JSON.stringify({ records }) }),
   delete: (id: string) =>
     apiFetch(`/api/attendance/${id}`, { method: 'DELETE' }),
+  deleteAllTeacherHistory: () =>
+    apiFetch('/api/attendance/teacher/all', { method: 'DELETE' }),
 };
 
 // LEAVE APIs
@@ -103,6 +105,8 @@ export const leavesAPI = {
   getNotifications: () => apiFetch('/api/leaves/notifications'),
   review: (id: string, status: string, reviewNote: string) =>
     apiFetch(`/api/leaves/${id}/review`, { method: 'PUT', body: JSON.stringify({ status, reviewNote }) }),
+  acknowledge: (id: string) =>
+    apiFetch(`/api/leaves/${id}/acknowledge`, { method: 'PUT' }),
   delete: (id: string) => apiFetch(`/api/leaves/${id}`, { method: 'DELETE' }),
 };
 

@@ -97,10 +97,8 @@ export default function ManagerDashboard() {
   };
 
   useEffect(() => {
-    if (view === 'leave-inbox') {
-      fetchLeaveApplications();
-    }
-  }, [view, currentUser]);
+    fetchLeaveApplications();
+  }, [currentUser]);
 
   const loadAllData = async () => {
     setLoading(true);
@@ -340,6 +338,33 @@ export default function ManagerDashboard() {
               <p className="text-sm opacity-80">Parents Registered</p>
             </Card>
           </div>
+
+          {/* Pending Leave Applications Notification for HOD */}
+          {leaveApplications.filter(l => l.status === 'pending').length > 0 && (
+            <Card className="bg-gradient-to-r from-amber-500 to-orange-600 border-0 p-6 text-white shadow-xl">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold">
+                    📝
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold">
+                      {leaveApplications.filter(l => l.status === 'pending').length} Pending Leave Application(s) Awaiting Review
+                    </h3>
+                    <p className="text-sm opacity-90">
+                      Students in your department have submitted absence requests requiring your approval.
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  onClick={() => setView('leave-inbox')}
+                  className="bg-white text-orange-700 hover:bg-orange-50 font-bold px-6 py-3 rounded-xl shadow-lg transition-all whitespace-nowrap"
+                >
+                  Review In Inbox →
+                </Button>
+              </div>
+            </Card>
+          )}
 
           {/* Low attendance alert */}
           <Card className={`${cardBg} p-6`}>

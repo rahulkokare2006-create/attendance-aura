@@ -532,6 +532,18 @@ router.get('/outside-alerts/:sessionId', protect, async (req, res) => {
   }
 });
 
+// DELETE /api/attendance/teacher/all - Delete ALL attendance records for teacher
+router.delete('/teacher/all', protect, restrictTo('teacher', 'manager'), async (req, res) => {
+  try {
+    const teacherId = req.user._id;
+    await Attendance.deleteMany({ teacherId });
+    await ActiveSession.deleteMany({ teacherId });
+    res.json({ success: true, message: 'All attendance history deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // DELETE /api/attendance/:id - Delete an attendance record
 router.delete('/:id', protect, restrictTo('teacher', 'manager'), async (req, res) => {
   try {

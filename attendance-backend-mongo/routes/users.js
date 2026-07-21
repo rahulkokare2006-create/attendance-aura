@@ -186,31 +186,71 @@ router.delete('/:id/cascade', protect, restrictTo('admin'), async (req, res) => 
   }
 });
 
-// DELETE /api/users/batch/:batch - Delete entire batch
+// DELETE /api/users/batch/:batch - Delete entire batch with complete cascade cleanup
 router.delete('/batch/:batch', protect, restrictTo('admin'), async (req, res) => {
   try {
     const Attendance = require('../models/Attendance');
-    const batch = req.params.batch;
-    const students = await User.find({ role: 'student', batch });
-    const usns = students.map(s => s.usn).filter(Boolean);
-    
-    // Delete attendance records for these students
-    for (const usn of usns) {
-      await Attendance.updateMany({}, { $pull: { records: { usn } } });
-    }
-    await Attendance.deleteMany({ records: { $size: 0 } });
-    
-    // Delete parent accounts linked to these students
-    await User.deleteMany({ role: 'parent', childUSN: { $in: usns } });
-    
-    // Delete leave applications linked to these students
     const LeaveApplication = require('../models/LeaveApplication');
-    await LeaveApplication.deleteMany({ studentUSN: { $in: usns } });
-    
-    // Delete student accounts
-    await User.deleteMany({ role: 'student', batch });
-    
-    res.json({ success: true, message: `Batch ${batch} deleted` });
+    const Class = require('../models/Class');
+    const ActiveSession = require('../models/ActiveSession');
+    const batch = req.params.batch;
+
+    // Find all students matching batch (case-insensitive or exact)
+    const students = await User.find({
+      role: 'student',
+      $or: [
+        { batch: batch },
+        { batch: new RegExp(`^${batch}$`, 'i') }
+      ]
+    });
+    const studentIds = students.map(s => s._id);
+    const usns = students.map(s => s.usn).filter(Boolean);
+
+    if (usns.length > 0) {
+      // 1. Delete parent accounts linked to these students
+      await User.deleteMany({ role: 'parent', childUSN: { $in: usns } });
+
+      // 2. Delete leave applications linked to these students
+      await LeaveApplication.deleteMany({
+        $or: [
+          { studentId: { $in: studentIds } },
+          { studentUSN: { $in: usns } }
+        ]
+      });
+
+      // 3. Remove student entries from Class rosters
+      await Class.updateMany(
+        {},
+        { $pull: { students: { usn: { $in: usns } } } }
+      );
+
+      // 4. Remove student entries from Attendance documents and purge empty attendance sessions
+      await Attendance.updateMany(
+        {},
+        { $pull: { records: { usn: { $in: usns } } } }
+      );
+      await Attendance.deleteMany({ records: { $size: 0 } });
+
+      // 5. Remove student entries from ActiveSession records
+      for (const usn of usns) {
+        const field = `records.${usn}`;
+        await ActiveSession.updateMany({}, { $unset: { [field]: 1 } });
+      }
+    }
+
+    // 6. Delete all student user accounts in this batch
+    const deleteResult = await User.deleteMany({
+      role: 'student',
+      $or: [
+        { batch: batch },
+        { batch: new RegExp(`^${batch}$`, 'i') }
+      ]
+    });
+
+    res.json({
+      success: true,
+      message: `Batch ${batch} deleted completely (${deleteResult.deletedCount} student(s) and all linked data removed)`
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

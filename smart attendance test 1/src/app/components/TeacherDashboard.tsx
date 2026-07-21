@@ -278,6 +278,24 @@ export default function TeacherDashboard() {
   // Class creation form states
   const [className, setClassName] = useState('');
   const [classSubject, setClassSubject] = useState('');
+  const [approvedLeaves, setApprovedLeaves] = useState<any[]>([]);
+
+  const fetchApprovedLeaves = async () => {
+    try {
+      const res = await leavesAPI.getNotifications();
+      if (res.success && res.leaves) {
+        setApprovedLeaves(res.leaves.filter((l: any) => !l.viewedByTeacher));
+      }
+    } catch (err) {
+      console.error('[TeacherDashboard] Error fetching leave notifications:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchApprovedLeaves();
+    }
+  }, [currentUser]);
   const [classBranch, setClassBranch] = useState('');
   const [classSemester, setClassSemester] = useState('');
   const [classSection, setClassSection] = useState('');
@@ -1146,6 +1164,19 @@ export default function TeacherDashboard() {
     }
   };
 
+  const deleteAllAttendanceHistory = async () => {
+    if (window.confirm('⚠️ Are you sure you want to DELETE ALL attendance history?\n\nThis will permanently delete all past attendance records for all your classes. This action CANNOT be undone!')) {
+      try {
+        await attendanceAPI.deleteAllTeacherHistory();
+        setAttendanceHistory([]);
+        localStorage.removeItem(`attendance_history_${currentUser?.id}`);
+        toast.success('All attendance history deleted successfully!');
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to delete attendance history');
+      }
+    }
+  };
+
   const cardBg = isDarkMode ? 'bg-white/10 backdrop-blur-xl border-white/20' : 'bg-white border-gray-200';
   const textColor = isDarkMode ? 'text-white' : 'text-gray-900';
   const subTextColor = isDarkMode ? 'text-white/60' : 'text-gray-600';
@@ -1153,6 +1184,47 @@ export default function TeacherDashboard() {
 
   const DashboardView = () => (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+      {/* Approved Leave Notifications for Department Teachers */}
+      {approvedLeaves.map(leave => (
+        <motion.div
+          key={leave._id || leave.id}
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="p-5 rounded-2xl border bg-green-500/10 border-green-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-lg"
+        >
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-500 text-white">
+                Approved Leave Alert ✓
+              </span>
+              <span className={`text-xs font-medium ${subTextColor}`}>HOD Forwarded Notification</span>
+            </div>
+            <h4 className={`text-base font-bold ${textColor}`}>
+              {leave.studentName} ({leave.studentUSN}) — {leave.studentBranch} Sem {leave.studentSemester}
+            </h4>
+            <p className={`text-sm ${subTextColor}`}>
+              📅 <strong>Approved Leave Dates:</strong> {leave.fromDate} to {leave.toDate} | 📝 <strong>Reason:</strong> {leave.reason}
+            </p>
+            {leave.reviewNote && (
+              <p className="text-xs text-amber-400 mt-1 italic">
+                💬 <strong>HOD Note ({leave.reviewedBy || 'HOD'}):</strong> "{leave.reviewNote}"
+              </p>
+            )}
+          </div>
+          <Button
+            onClick={async () => {
+              if (leave._id) {
+                await leavesAPI.acknowledge(leave._id);
+                fetchApprovedLeaves();
+              }
+            }}
+            className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl border border-white/20 transition-all whitespace-nowrap"
+          >
+            Acknowledge / Clear ✕
+          </Button>
+        </motion.div>
+      ))}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card
           onClick={() => setView('classes')}
@@ -1712,12 +1784,25 @@ export default function TeacherDashboard() {
       {view === 'history' && (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <Card className={`${cardBg} p-8`}>
-            <h2 className={`text-2xl font-bold ${textColor} mb-6`}>
-              Attendance History ({attendanceHistory.length} records)
-            </h2>
-            <p className={`${subTextColor} text-sm mb-4`}>
-              * Records older than {autoDeleteEnabled && autoDeleteDuration !== 'disabled' ? `${autoDeleteDuration} months` : '1 month'} are automatically deleted
-            </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div>
+                <h2 className={`text-2xl font-bold ${textColor}`}>
+                  Attendance History ({attendanceHistory.length} records)
+                </h2>
+                <p className={`${subTextColor} text-sm mt-1`}>
+                  * Records older than {autoDeleteEnabled && autoDeleteDuration !== 'disabled' ? `${autoDeleteDuration} months` : '1 month'} are automatically deleted
+                </p>
+              </div>
+              {attendanceHistory.length > 0 && (
+                <Button
+                  onClick={deleteAllAttendanceHistory}
+                  className="bg-red-600 hover:bg-red-700 text-white flex items-center gap-2 px-4 py-2 rounded-xl transition-all shadow-md"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete All History
+                </Button>
+              )}
+            </div>
 
             {attendanceHistory.length === 0 ? (
               <div className="text-center py-8">

@@ -18,6 +18,9 @@ const leaveSchema = new mongoose.Schema({
   reviewedAt: { type: Date, default: null },
   forTeachers: { type: Boolean, default: false },
   approvedBranch: { type: String, default: null },
+  viewedByStudent: { type: Boolean, default: false },
+  viewedByTeacher: { type: Boolean, default: false },
+  viewedByManager: { type: Boolean, default: false },
 }, { timestamps: true });
 
 module.exports = mongoose.model('LeaveApplication', leaveSchema);

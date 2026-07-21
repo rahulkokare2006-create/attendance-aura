@@ -89,9 +89,32 @@ router.put('/:id/review', protect, restrictTo('manager'), async (req, res) => {
       reviewedBy: req.user.name, reviewedAt: new Date(),
       forTeachers: status === 'approved',
       approvedBranch: status === 'approved' ? req.user.department : null,
+      viewedByStudent: false, // Reset flag so student gets approval/rejection notification
+      viewedByTeacher: false, // Reset flag so teacher gets notification if approved
+      viewedByManager: true, // Mark viewed by reviewing manager
     }, { new: true });
     if (!leave) return res.status(404).json({ error: 'Leave application not found' });
     res.json({ success: true, leave });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/leaves/:id/acknowledge - Mark notification as viewed/acknowledged by user
+router.put('/:id/acknowledge', protect, async (req, res) => {
+  try {
+    const leave = await LeaveApplication.findById(req.params.id);
+    if (!leave) return res.status(404).json({ error: 'Leave application not found' });
+
+    if (req.user.role === 'student') {
+      leave.viewedByStudent = true;
+    } else if (req.user.role === 'teacher') {
+      leave.viewedByTeacher = true;
+    } else if (req.user.role === 'manager') {
+      leave.viewedByManager = true;
+    }
+    await leave.save();
+    res.json({ success: true, message: 'Notification acknowledged', leave });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

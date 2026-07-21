@@ -480,11 +480,19 @@ export const remove = async (refObj: any) => {
       return;
     }
 
-    // Delete leave
-    if (path.startsWith('leave_applications/') || path.startsWith('leave_notifications/')) {
-      const id = path.split('/')[1];
-      if (id) await leavesAPI.delete(id);
-      return;
+    // Delete attendance history
+    if (path.startsWith('attendance_history/')) {
+      const parts = path.split('/');
+      if (parts.length === 2) {
+        await attendanceAPI.deleteAllTeacherHistory();
+        delete memStore[path];
+        return;
+      }
+      if (parts.length === 3) {
+        await attendanceAPI.delete(parts[2]);
+        delete memStore[path];
+        return;
+      }
     }
 
     // End session cleanup
