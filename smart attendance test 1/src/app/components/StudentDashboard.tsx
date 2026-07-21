@@ -98,7 +98,8 @@ export default function StudentDashboard() {
 
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
   const [filteredHistory, setFilteredHistory] = useState<AttendanceRecord[]>([]);
-  const [selectedSemester, setSelectedSemester] = useState<string>('');
+  // Initialize directly from currentUser.semester so filter is correct from the very first render
+  const [selectedSemester, setSelectedSemester] = useState<string>(() => String(currentUser?.semester || ''));
   const [totalClasses, setTotalClasses] = useState(0);
   const [attendedClasses, setAttendedClasses] = useState(0);
   const [attendancePercentage, setAttendancePercentage] = useState(0);
@@ -107,10 +108,10 @@ export default function StudentDashboard() {
 
   const [studentLeaves, setStudentLeaves] = useState<any[]>([]);
 
-  // Sync selectedSemester with currentUser's current enrolled semester
+  // Keep selectedSemester in sync if user's semester changes (e.g. after promotion)
   useEffect(() => {
-    if (currentUser?.semester) {
-      setSelectedSemester(currentUser.semester);
+    if (currentUser?.semester && !selectedSemester) {
+      setSelectedSemester(String(currentUser.semester));
     }
   }, [currentUser?.semester]);
 
@@ -223,10 +224,11 @@ export default function StudentDashboard() {
 
   // Dynamically calculate attendance stats & filter history based on selected semester
   useEffect(() => {
-    const targetSem = selectedSemester || currentUser?.semester || '';
-    const targetSemNorm = normalizeSem(targetSem);
+    // Always resolve to current user's semester if nothing explicitly selected yet
+    const effectiveSem = selectedSemester || String(currentUser?.semester || '');
+    const targetSemNorm = normalizeSem(effectiveSem);
 
-    const filtered = (targetSemNorm && selectedSemester !== 'ALL')
+    const filtered = (targetSemNorm && effectiveSem !== 'ALL')
       ? attendanceHistory.filter((h: any) => {
           const recSemNorm = normalizeSem(h.semester);
           return recSemNorm === targetSemNorm;

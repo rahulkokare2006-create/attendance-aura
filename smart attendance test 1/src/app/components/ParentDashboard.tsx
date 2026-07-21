@@ -68,10 +68,10 @@ export default function ParentDashboard() {
   const [attendancePercentage, setAttendancePercentage] = useState(0);
   const [subjectStats, setSubjectStats] = useState<SubjectStats[]>([]);
 
-  // Automatically sync parentSemFilter with studentData's enrolled semester
+  // Automatically sync parentSemFilter with studentData's enrolled semester (only if not manually set)
   useEffect(() => {
-    if (studentData?.semester) {
-      setParentSemFilter(studentData.semester);
+    if (studentData?.semester && !parentSemFilter) {
+      setParentSemFilter(String(studentData.semester));
     }
   }, [studentData?.semester]);
 
@@ -164,8 +164,9 @@ export default function ParentDashboard() {
 
   // Dynamically calculate stats based on selected parentSemFilter (defaulting to child's semester)
   useEffect(() => {
-    const semNorm = normalizeSem(parentSemFilter || studentData?.semester);
-    const filtered = (semNorm && parentSemFilter !== 'ALL')
+    const effectiveSem = parentSemFilter || String(studentData?.semester || '');
+    const semNorm = normalizeSem(effectiveSem);
+    const filtered = (semNorm && effectiveSem !== 'ALL')
       ? attendanceHistory.filter((h: any) => {
           const recSem = normalizeSem(h.semester);
           return recSem === semNorm;
