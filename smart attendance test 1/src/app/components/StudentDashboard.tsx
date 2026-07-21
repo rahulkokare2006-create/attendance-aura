@@ -3,7 +3,7 @@ import { ref, set, get, update, onValue, remove, rtdb, db } from './firebaseComp
 import { motion } from 'motion/react';
 import { ArrowLeft, LogOut, Calendar, CheckCircle2, XCircle, Moon, Sun, Scan, BookOpen, BarChart3, Edit2, Save } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import { API_URL } from './api';
+import { API_URL, leavesAPI, attendanceAPI } from './api';
 
 
 import { useTheme } from './ThemeContext';
