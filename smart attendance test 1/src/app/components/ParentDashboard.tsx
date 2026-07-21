@@ -25,6 +25,13 @@ interface SubjectStats {
   percentage: number;
 }
 
+const normalizeSem = (sem: any): string => {
+  if (!sem) return '';
+  const str = String(sem).trim();
+  const match = str.match(/\d+/);
+  return match ? match[0] : str.toLowerCase();
+};
+
 export default function ParentDashboard() {
   const { currentUser, logout, getStudentByUSN } = useAuth();
   const { isDarkMode, toggleTheme } = useTheme();
@@ -51,13 +58,21 @@ export default function ParentDashboard() {
     localStorage.setItem('parent_view', view);
   }, [view]);
   
-  // REMOVED: Search functionality - parents can only see their linked child
   const [studentData, setStudentData] = useState<any>(null);
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
+  const [filteredHistory, setFilteredHistory] = useState<AttendanceRecord[]>([]);
+  const [parentSemFilter, setParentSemFilter] = useState<string>('');
   const [totalClasses, setTotalClasses] = useState(0);
   const [attendedClasses, setAttendedClasses] = useState(0);
   const [attendancePercentage, setAttendancePercentage] = useState(0);
   const [subjectStats, setSubjectStats] = useState<SubjectStats[]>([]);
+
+  // Automatically sync parentSemFilter with studentData's enrolled semester
+  useEffect(() => {
+    if (studentData?.semester) {
+      setParentSemFilter(studentData.semester);
+    }
+  }, [studentData?.semester]);
 
   // Automatically load linked child's data and set up real-time attendance listener
   useEffect(() => {
@@ -85,32 +100,8 @@ export default function ParentDashboard() {
               if (snapshot.exists()) {
                 const parsedHistory: AttendanceRecord[] = Object.values(snapshot.val());
                 setAttendanceHistory(parsedHistory);
-                setTotalClasses(parsedHistory.length);
-                const attended = parsedHistory.filter(h => h.status === 'PRESENT').length;
-                setAttendedClasses(attended);
-                setAttendancePercentage(parsedHistory.length > 0 ? Math.round((attended / parsedHistory.length) * 100 * 10) / 10 : 0);
-
-                // Calculate subject-wise stats
-                const subjectMap = new Map<string, { total: number; attended: number }>();
-                parsedHistory.forEach(record => {
-                  const existing = subjectMap.get(record.subject) || { total: 0, attended: 0 };
-                  existing.total++;
-                  if (record.status === 'PRESENT') existing.attended++;
-                  subjectMap.set(record.subject, existing);
-                });
-
-                const stats: SubjectStats[] = Array.from(subjectMap.entries()).map(([subject, data]) => ({
-                  subject,
-                  total: data.total,
-                  attended: data.attended,
-                  percentage: Math.round((data.attended / data.total) * 100 * 10) / 10,
-                }));
-                setSubjectStats(stats);
               } else {
-                setTotalClasses(0);
-                setAttendedClasses(0);
-                setAttendancePercentage(0);
-                setSubjectStats([]);
+                setAttendanceHistory([]);
               }
             } catch (err) {
               console.error('[ParentDashboard] Error processing attendance history:', err);
@@ -132,6 +123,41 @@ export default function ParentDashboard() {
     };
   }, [currentUser]);
 
+  // Dynamically calculate stats based on selected parentSemFilter (defaulting to child's semester)
+  useEffect(() => {
+    const semNorm = normalizeSem(parentSemFilter || studentData?.semester);
+    const filtered = (semNorm && parentSemFilter !== 'ALL')
+      ? attendanceHistory.filter((h: any) => {
+          const recSem = normalizeSem(h.semester);
+          if (!recSem) return true;
+          return recSem === semNorm;
+        })
+      : attendanceHistory;
+
+    setFilteredHistory(filtered);
+    setTotalClasses(filtered.length);
+    const attended = filtered.filter(h => h.status === 'PRESENT').length;
+    setAttendedClasses(attended);
+    setAttendancePercentage(filtered.length > 0 ? Math.round((attended / filtered.length) * 100 * 10) / 10 : 0);
+
+    const subjectMap = new Map<string, { total: number; attended: number }>();
+    filtered.forEach(record => {
+      if (!record.subject) return;
+      const existing = subjectMap.get(record.subject) || { total: 0, attended: 0 };
+      existing.total++;
+      if (record.status === 'PRESENT') existing.attended++;
+      subjectMap.set(record.subject, existing);
+    });
+
+    const stats: SubjectStats[] = Array.from(subjectMap.entries()).map(([subject, data]) => ({
+      subject,
+      total: data.total,
+      attended: data.attended,
+      percentage: Math.round((data.attended / data.total) * 100 * 10) / 10,
+    }));
+    setSubjectStats(stats);
+  }, [attendanceHistory, parentSemFilter, studentData?.semester]);
+
   const cardBg = isDarkMode ? 'bg-white/10 backdrop-blur-xl border-white/20' : 'bg-white border-gray-200';
   const textColor = isDarkMode ? 'text-white' : 'text-gray-900';
   const subTextColor = isDarkMode ? 'text-white/60' : 'text-gray-600';
@@ -151,6 +177,37 @@ export default function ParentDashboard() {
           </div>
         </Card>
       )}
+
+      {/* Semester Filter Bar for Parents */}
+      <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-3 ${cardBg}`}>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-lg">
+            🎓
+          </div>
+          <div>
+            <h4 className={`text-sm font-bold ${textColor}`}>
+              Semester Filter: {parentSemFilter && parentSemFilter !== 'ALL' ? `Sem ${parentSemFilter}` : 'All Semesters'}
+            </h4>
+            <p className={`text-xs ${subTextColor}`}>
+              Defaulting to child's enrolled semester ({studentData?.semester || 'N/A'}). Select any semester to inspect.
+            </p>
+          </div>
+        </div>
+        <select
+          value={parentSemFilter}
+          onChange={e => setParentSemFilter(e.target.value)}
+          className={`px-4 py-2 rounded-xl text-sm font-bold border outline-none cursor-pointer ${
+            isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'
+          }`}
+        >
+          <option value="ALL">🌐 All Semesters</option>
+          {['1', '2', '3', '4', '5', '6', '7', '8'].map(sem => (
+            <option key={sem} value={sem}>
+              Sem {sem} {normalizeSem(studentData?.semester) === sem ? '⭐ (Current Enrolled)' : ''}
+            </option>
+          ))}
+        </select>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="bg-gradient-to-br from-blue-500 to-cyan-500 border-0 p-6 text-white">
@@ -183,24 +240,24 @@ export default function ParentDashboard() {
 
       <Card className={`${cardBg} p-8`}>
         <h2 className={`text-2xl font-bold ${textColor} mb-6`}>
-          Attendance History ({attendanceHistory.length} records)
+          Attendance History ({filteredHistory.length} records)
         </h2>
 
-        {attendanceHistory.length === 0 ? (
+        {filteredHistory.length === 0 ? (
           <div className="text-center py-8">
             <Calendar className={`w-16 h-16 ${subTextColor} mx-auto mb-4`} />
-            <p className={subTextColor}>No attendance records yet</p>
+            <p className={subTextColor}>No attendance records for selected semester</p>
           </div>
         ) : (
           <div className="space-y-3 max-h-96 overflow-y-auto">
-            {[...attendanceHistory].reverse().map((record, index) => (
+            {[...filteredHistory].reverse().map((record, index) => (
               <Card key={index} className={`${isDarkMode ? 'bg-white/5' : 'bg-gray-50'} p-4`}>
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <h3 className={`font-bold ${textColor}`}>{record.subject}</h3>
                     <p className={`${subTextColor} text-sm`}>{record.className}</p>
                     <p className={`${subTextColor} text-xs mt-1`}>
-                      📅 {record.date}
+                      📅 {record.date} • Sem {record.semester || studentData?.semester || 'N/A'}
                     </p>
                   </div>
                   {record.status === 'PRESENT' ? (

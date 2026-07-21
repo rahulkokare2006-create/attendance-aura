@@ -173,7 +173,7 @@ export default function StudentDashboard() {
     const filtered = currentSemNorm
       ? attendanceHistory.filter((h: any) => {
           const recSemNorm = normalizeSem(h.semester);
-          if (!recSemNorm) return false;
+          if (!recSemNorm) return true;
           return recSemNorm === currentSemNorm;
         })
       : attendanceHistory;
