@@ -96,6 +96,15 @@ export default function ParentDashboard() {
           const studentUsn = (student as any).usn || '';
 
           const getRecordKey = (item: any) => item.sessionId || item.id || `${item.date}_${item.subject}`;
+          const getRecordSem = (r: any) => {
+            if (r.semester && String(r.semester).trim()) return String(r.semester).trim();
+            if (r.classSemester && String(r.classSemester).trim()) return String(r.classSemester).trim();
+            if (r.className) {
+              const semMatch = String(r.className).match(/(?:sem|semester|class|sec)?\s*(\d+)/i);
+              if (semMatch && semMatch[1]) return semMatch[1];
+            }
+            return String((student as any)?.semester || '').trim();
+          };
 
           // 1. Try fetching official backend history with semester metadata
           try {
@@ -103,7 +112,7 @@ export default function ParentDashboard() {
             if (backendRes.success && Array.isArray(backendRes.history) && backendRes.history.length > 0) {
               const tagged = backendRes.history.map((r: any) => ({
                 ...r,
-                semester: String(r.semester || r.classSemester || '').trim(),
+                semester: getRecordSem(r),
               }));
               setAttendanceHistory(prev => {
                 const map = new Map<string, any>();
@@ -124,7 +133,7 @@ export default function ParentDashboard() {
                 const rawRecords: any[] = Object.values(snapshot.val());
                 const tagged = rawRecords.map((r: any) => ({
                   ...r,
-                  semester: String(r.semester || r.classSemester || '').trim(),
+                  semester: getRecordSem(r),
                 }));
                 setAttendanceHistory(prev => {
                   const map = new Map<string, any>();
@@ -158,7 +167,7 @@ export default function ParentDashboard() {
     const semNorm = normalizeSem(parentSemFilter || studentData?.semester);
     const filtered = (semNorm && parentSemFilter !== 'ALL')
       ? attendanceHistory.filter((h: any) => {
-          const recSem = normalizeSem(h.semester || h.className);
+          const recSem = normalizeSem(h.semester);
           return recSem === semNorm;
         })
       : attendanceHistory;

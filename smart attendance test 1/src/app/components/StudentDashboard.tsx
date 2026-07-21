@@ -165,8 +165,10 @@ export default function StudentDashboard() {
     const getRecordSem = (r: any) => {
       if (r.semester && String(r.semester).trim()) return String(r.semester).trim();
       if (r.classSemester && String(r.classSemester).trim()) return String(r.classSemester).trim();
-      const parsed = normalizeSem(r.className);
-      if (parsed) return parsed;
+      if (r.className) {
+        const semMatch = String(r.className).match(/(?:sem|semester|class|sec)?\s*(\d+)/i);
+        if (semMatch && semMatch[1]) return semMatch[1];
+      }
       return String(currentUser?.semester || '').trim();
     };
 
@@ -226,7 +228,7 @@ export default function StudentDashboard() {
 
     const filtered = (targetSemNorm && selectedSemester !== 'ALL')
       ? attendanceHistory.filter((h: any) => {
-          const recSemNorm = normalizeSem(h.semester || h.className);
+          const recSemNorm = normalizeSem(h.semester);
           return recSemNorm === targetSemNorm;
         })
       : attendanceHistory;
