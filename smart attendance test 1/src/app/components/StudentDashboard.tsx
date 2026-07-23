@@ -134,13 +134,24 @@ export default function StudentDashboard() {
     }
   }, [currentUser]);
 
-  // Real-time active session listener for student's branch/semester/section/batch
+  const getGraduationYear = (batchStr: any) => {
+    if (!batchStr) return '';
+    const matches = String(batchStr).match(/\b(20\d{2})\b/g);
+    if (matches && matches.length > 0) {
+      return matches[matches.length - 1];
+    }
+    return String(batchStr).trim().toLowerCase();
+  };
+
+  // Real-time active session listener for student's branch/semester/section/batch (supports Regular & Lateral Entry)
   useEffect(() => {
     const activeRef = ref(rtdb, 'active_session');
     const unsubscribe = onValue(activeRef, (snap: any) => {
       if (snap.exists()) {
         const session = snap.val();
-        const batchMatch = !session.batch || !currentUser?.batch || normalizeSem(session.batch) === normalizeSem(currentUser?.batch);
+        const sessionGradYear = getGraduationYear(session.batch);
+        const userGradYear = getGraduationYear(currentUser?.batch);
+        const batchMatch = !session.batch || !currentUser?.batch || sessionGradYear === userGradYear;
         if (
           session &&
           batchMatch &&

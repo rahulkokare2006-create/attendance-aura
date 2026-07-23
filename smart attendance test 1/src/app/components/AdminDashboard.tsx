@@ -10,6 +10,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card } from './ui/card';
+import CustomSelect from './CustomSelect';
 
 
 
@@ -563,33 +564,43 @@ export default function AdminDashboard() {
                 <Input type="tel" value={teacherPhone} onChange={(e) => setTeacherPhone(e.target.value)} placeholder="1234567890" className={inputBg} required />
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className={`${textColor} mb-2 block`}>Department *</Label>
-                  <select value={teacherDepartment} onChange={(e) => setTeacherDepartment(e.target.value)} className={`${inputBg} w-full p-2.5 rounded-lg border`}>
-                    <option value="">Select Department</option>
-                    <option value="CSE">CSE</option>
-                    <option value="ECE">ECE</option>
-                    <option value="AIML">AIML</option>
-                    <option value="ISE">ISE</option>
-                    <option value="Mathematics">Mathematics</option>
-                    <option value="Physics">Physics</option>
-                    <option value="Chemistry">Chemistry</option>
-                    <option value="MBA">MBA</option>
-                  </select>
-                  <Input type="text" value={teacherDepartment} onChange={(e) => setTeacherDepartment(e.target.value)} className={`${inputBg} mt-1`} placeholder="Or type custom department" autoComplete="off" />
-                </div>
-                <div>
-                  <Label className={`${textColor} mb-2 block`}>Designation *</Label>
-                  <select value={teacherDesignation} onChange={(e) => setTeacherDesignation(e.target.value)} className={`${inputBg} w-full p-2.5 rounded-lg border`}>
-                    <option value="">Select Designation</option>
-                    <option value="Professor">Professor</option>
-                    <option value="Associate Professor">Associate Professor</option>
-                    <option value="Assistant Professor">Assistant Professor</option>
-                    <option value="Lecturer">Lecturer</option>
-                    <option value="HOD">HOD</option>
-                  </select>
-                  <Input type="text" value={teacherDesignation} onChange={(e) => setTeacherDesignation(e.target.value)} className={`${inputBg} mt-1`} placeholder="Or type custom designation" autoComplete="off" />
-                </div>
+                <CustomSelect
+                  label="Department *"
+                  value={teacherDepartment}
+                  onChange={setTeacherDepartment}
+                  required
+                  inputBg={inputBg}
+                  textColor={textColor}
+                  placeholder="Select Department"
+                  customPlaceholder="Enter Custom Department"
+                  options={[
+                    { label: 'CSE', value: 'CSE' },
+                    { label: 'ECE', value: 'ECE' },
+                    { label: 'AIML', value: 'AIML' },
+                    { label: 'ISE', value: 'ISE' },
+                    { label: 'Mathematics', value: 'Mathematics' },
+                    { label: 'Physics', value: 'Physics' },
+                    { label: 'Chemistry', value: 'Chemistry' },
+                    { label: 'MBA', value: 'MBA' },
+                  ]}
+                />
+                <CustomSelect
+                  label="Designation *"
+                  value={teacherDesignation}
+                  onChange={setTeacherDesignation}
+                  required
+                  inputBg={inputBg}
+                  textColor={textColor}
+                  placeholder="Select Designation"
+                  customPlaceholder="Enter Custom Designation"
+                  options={[
+                    { label: 'Professor', value: 'Professor' },
+                    { label: 'Associate Professor', value: 'Associate Professor' },
+                    { label: 'Assistant Professor', value: 'Assistant Professor' },
+                    { label: 'Lecturer', value: 'Lecturer' },
+                    { label: 'HOD', value: 'HOD' },
+                  ]}
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>

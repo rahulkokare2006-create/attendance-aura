@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
+import CustomSelect from './CustomSelect';
 
 type Mode = 'login' | 'signup' | 'forgot-password' | 'verify-email' | 'verify-email-token' | 'reset-password-token';
 
@@ -545,45 +546,57 @@ export default function Login() {
                             </div>
                           </div>
                           <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <Label className={`${textColor} mb-2 block`}>Branch *</Label>
-                              <select value={branch} onChange={(e) => setBranch(e.target.value)} required className={`${inputBg} w-full p-2.5 rounded-lg border`}>
-                                <option value="">Select Branch</option>
-                                <option value="CSE">CSE</option>
-                                <option value="ECE">ECE</option>
-                                <option value="AIML">AIML</option>
-                                <option value="ISE">ISE</option>
-                              </select>
-                              <Input type="text" value={branch} onChange={(e) => setBranch(e.target.value)} className={`${inputBg} mt-1`} placeholder="Or type custom branch" autoComplete="off" />
-                            </div>
+                            <CustomSelect
+                              label="Branch *"
+                              value={branch}
+                              onChange={setBranch}
+                              required
+                              inputBg={inputBg}
+                              textColor={textColor}
+                              placeholder="Select Branch"
+                              customPlaceholder="Enter Branch (e.g. Mechanical AI)"
+                              options={[
+                                { label: 'CSE', value: 'CSE' },
+                                { label: 'ECE', value: 'ECE' },
+                                { label: 'AIML', value: 'AIML' },
+                                { label: 'ISE', value: 'ISE' },
+                                { label: 'CIVIL', value: 'CIVIL' },
+                                { label: 'MECH', value: 'MECH' },
+                              ]}
+                            />
                             <div>
                               <Label className={`${textColor} mb-2 block`}>Semester *</Label>
-                              <select value={semester} onChange={(e) => setSemester(e.target.value)} required className={`${inputBg} w-full p-2.5 rounded-lg border`}>
+                              <select value={semester} onChange={(e) => setSemester(e.target.value)} required className={`${inputBg} w-full p-2.5 rounded-lg border text-sm font-medium`}>
                                 <option value="">Select Sem</option>
                                 {[1,2,3,4,5,6,7,8].map(s => <option key={s} value={s.toString()}>{s}</option>)}
                               </select>
                             </div>
                           </div>
-                          <div>
-                            <Label className={`${textColor} mb-2 block`}>Section *</Label>
-                            <select value={section} onChange={(e) => setSection(e.target.value)} required className={`${inputBg} w-full p-2.5 rounded-lg border`}>
-                              <option value="">Select Section</option>
-                              {['A','B','C','D','E','F'].map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                            <Input type="text" value={section} onChange={(e) => setSection(e.target.value)} className={`${inputBg} mt-1`} placeholder="Or type custom section" autoComplete="off" />
-                          </div>
-                          <div>
-                            <Label className={`${textColor} mb-2 block`}>Batch *</Label>
-                            <select value={batch} onChange={(e) => setBatch(e.target.value)} className={`${inputBg} w-full p-2.5 rounded-lg border`}>
-                              <option value="">Select Batch</option>
-                              {Array.from({length: 10}, (_, i) => {
-                                const year = new Date().getFullYear() - 5 + i;
-                                return <option key={year} value={`${year}-${year+4}`}>{year}-{year+4}</option>;
-                              })}
-                            </select>
-                            <Input type="text" value={batch} onChange={(e) => setBatch(e.target.value)}
-                              className={`${inputBg} mt-2`} placeholder="Or type manually e.g. 2024-2028" autoComplete="off" />
-                          </div>
+                          <CustomSelect
+                            label="Section *"
+                            value={section}
+                            onChange={setSection}
+                            required
+                            inputBg={inputBg}
+                            textColor={textColor}
+                            placeholder="Select Section"
+                            customPlaceholder="Enter Section Name"
+                            options={['A','B','C','D','E','F'].map(s => ({ label: `Section ${s}`, value: s }))}
+                          />
+                          <CustomSelect
+                            label="Batch / Graduation Year *"
+                            value={batch}
+                            onChange={setBatch}
+                            required
+                            inputBg={inputBg}
+                            textColor={textColor}
+                            placeholder="Select Batch"
+                            customPlaceholder="Enter Batch e.g. 2025-2028 (Lateral Entry)"
+                            options={Array.from({length: 10}, (_, i) => {
+                              const year = new Date().getFullYear() - 5 + i;
+                              return { label: `${year}–${year+4} (Grad ${year+4})`, value: `${year}-${year+4}` };
+                            })}
+                          />
                         </>
                       )}
                       {selectedRole === 'parent' && (

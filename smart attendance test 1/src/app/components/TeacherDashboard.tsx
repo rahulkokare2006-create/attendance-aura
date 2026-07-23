@@ -13,6 +13,7 @@ import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
+import CustomSelect from './CustomSelect';
 import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 
@@ -1476,43 +1477,57 @@ export default function TeacherDashboard() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                <div>
-                  <Label className={`${textColor} mb-2 block`}>Branch *</Label>
-                  <select value={classBranch} onChange={(e) => setClassBranch(e.target.value)}
-                    className={`${inputBg} w-full p-2.5 rounded-lg border`}>
-                    <option value="">Select Branch</option>
-                    <option value="CSE">CSE</option>
-                    <option value="ECE">ECE</option>
-                    <option value="AIML">AIML</option>
-                    <option value="ISE">ISE</option>
-                  </select>
-                  <Input type="text" value={classBranch} onChange={(e) => setClassBranch(e.target.value)}
-                    placeholder="Or custom" className={`${inputBg} mt-2`} autoComplete="off" />
-                </div>
+                <CustomSelect
+                  label="Branch *"
+                  value={classBranch}
+                  onChange={setClassBranch}
+                  required
+                  inputBg={inputBg}
+                  textColor={textColor}
+                  placeholder="Select Branch"
+                  customPlaceholder="Enter Custom Branch"
+                  options={[
+                    { label: 'CSE', value: 'CSE' },
+                    { label: 'ECE', value: 'ECE' },
+                    { label: 'AIML', value: 'AIML' },
+                    { label: 'ISE', value: 'ISE' },
+                    { label: 'CIVIL', value: 'CIVIL' },
+                    { label: 'MECH', value: 'MECH' },
+                  ]}
+                />
                 <div>
                   <Label className={`${textColor} mb-2 block`}>Current Sem *</Label>
                   <select value={classSemester} onChange={(e) => setClassSemester(e.target.value)}
-                    className={`${inputBg} w-full p-2.5 rounded-lg border`}>
+                    className={`${inputBg} w-full p-2.5 rounded-lg border text-sm font-medium`}>
                     <option value="">Select Sem</option>
                     {[1,2,3,4,5,6,7,8].map(s => <option key={s} value={s.toString()}>{s}</option>)}
                   </select>
                 </div>
-                <div>
-                  <Label className={`${textColor} mb-2 block`}>Section *</Label>
-                  <select value={classSection} onChange={(e) => setClassSection(e.target.value)}
-                    className={`${inputBg} w-full p-2.5 rounded-lg border`}>
-                    <option value="">Select Section</option>
-                    {['A','B','C','D','E','F'].map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                  <Input type="text" value={classSection} onChange={(e) => setClassSection(e.target.value)}
-                    placeholder="Or custom" className={`${inputBg} mt-2`} autoComplete="off" />
-                </div>
-                <div>
-                  <Label className={`${textColor} mb-2 block`}>Admission Batch *</Label>
-                  <Input type="text" value={classBatch} onChange={(e) => setClassBatch(e.target.value)}
-                    placeholder="e.g., 2024" className={inputBg} autoComplete="off" />
-                  <p className="text-[10px] text-amber-400 mt-1">Fixed admission year</p>
-                </div>
+                <CustomSelect
+                  label="Section *"
+                  value={classSection}
+                  onChange={setClassSection}
+                  required
+                  inputBg={inputBg}
+                  textColor={textColor}
+                  placeholder="Select Section"
+                  customPlaceholder="Enter Section Name"
+                  options={['A','B','C','D','E','F'].map(s => ({ label: `Section ${s}`, value: s }))}
+                />
+                <CustomSelect
+                  label="Batch / Graduation Year *"
+                  value={classBatch}
+                  onChange={setClassBatch}
+                  required
+                  inputBg={inputBg}
+                  textColor={textColor}
+                  placeholder="Select Batch"
+                  customPlaceholder="Enter Batch e.g. 2024-2028"
+                  options={Array.from({length: 10}, (_, i) => {
+                    const year = new Date().getFullYear() - 5 + i;
+                    return { label: `${year}–${year+4} (Grad ${year+4})`, value: `${year}-${year+4}` };
+                  })}
+                />
               </div>
 
               <div>

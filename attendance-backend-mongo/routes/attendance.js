@@ -197,9 +197,20 @@ router.post('/mark', protect, restrictTo('student'), async (req, res) => {
       return match ? match[0] : String(sem).trim().toLowerCase();
     };
 
-    // Check batch/semester/branch/section validation
-    if (session.batch && req.user.batch && normalizeSem(session.batch) !== normalizeSem(req.user.batch)) {
-      return res.status(400).json({ error: `❌ Admission Batch mismatch! Session is for Batch ${session.batch} but your profile is in Batch ${req.user.batch}` });
+    const getGraduationYear = (batchStr) => {
+      if (!batchStr) return '';
+      const matches = String(batchStr).match(/\b(20\d{2})\b/g);
+      if (matches && matches.length > 0) {
+        return matches[matches.length - 1];
+      }
+      return String(batchStr).trim().toLowerCase();
+    };
+
+    // Graduation Year / Batch validation (supports Regular and Lateral Entry studying together)
+    const sessionGradYear = getGraduationYear(session.batch);
+    const userGradYear = getGraduationYear(req.user.batch);
+    if (session.batch && req.user.batch && sessionGradYear && userGradYear && sessionGradYear !== userGradYear) {
+      return res.status(400).json({ error: `❌ Graduation Year mismatch! Session is for Graduation Year ${sessionGradYear} but your profile is for ${userGradYear}` });
     }
     if (normalizeSem(session.semester) !== normalizeSem(req.user.semester)) {
       return res.status(400).json({ error: `❌ Semester mismatch! Session is for Semester ${session.semester} but your current semester is Semester ${req.user.semester}` });
