@@ -183,27 +183,36 @@ export const get = async (refObj: any) => {
 
     // Student attendance
     if (path.startsWith('student_attendance/')) {
-      const usn = path.split('/')[1].toUpperCase();
-      const data = await attendanceAPI.getStudentHistory(usn);
-      const history = data.history || [];
-      const histObj: any = {};
-      history.forEach((h: any) => {
-        const status = h.status || 'ABSENT';
-        
-        const sessionId = h.sessionId || h._id.toString();
-        histObj[sessionId] = {
-          id: sessionId,
-          subject: h.subject,
-          className: h.className,
-          date: h.date,
-          year: h.year || new Date(h.date).getFullYear().toString(),
-          status,
+      const token = localStorage.getItem('token');
+      if (!token) {
+        const stored = memStore[path];
+        return { exists: () => Boolean(stored), val: () => stored || {} };
+      }
+      try {
+        const usn = path.split('/')[1].toUpperCase();
+        const data = await attendanceAPI.getStudentHistory(usn);
+        const history = data.history || [];
+        const histObj: any = {};
+        history.forEach((h: any) => {
+          const status = h.status || 'ABSENT';
+          const sessionId = h.sessionId || h._id.toString();
+          histObj[sessionId] = {
+            id: sessionId,
+            subject: h.subject,
+            className: h.className,
+            date: h.date,
+            year: h.year || new Date(h.date).getFullYear().toString(),
+            status,
+          };
+        });
+        return {
+          exists: () => history.length > 0,
+          val: () => histObj,
         };
-      });
-      return {
-        exists: () => history.length > 0,
-        val: () => histObj,
-      };
+      } catch {
+        const stored = memStore[path];
+        return { exists: () => Boolean(stored), val: () => stored || {} };
+      }
     }
 
     // Active session records
