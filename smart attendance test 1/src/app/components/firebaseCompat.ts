@@ -503,6 +503,28 @@ export const remove = async (refObj: any) => {
       }
     }
 
+    // Delete leave application or notification
+    if (path.startsWith('leave_applications/') || path.startsWith('leave_notifications/')) {
+      const parts = path.split('/');
+      const leaveId = parts[1];
+      if (leaveId) {
+        console.log(`[firebaseCompat.remove] Calling leavesAPI.delete for leaveId=${leaveId}`);
+        try {
+          await leavesAPI.delete(leaveId);
+        } catch (err) {
+          console.error(`[firebaseCompat.remove] Error deleting leave ${leaveId}:`, err);
+        }
+        delete memStore[path];
+        if (memStore['leave_applications'] && typeof memStore['leave_applications'] === 'object') {
+          delete memStore['leave_applications'][leaveId];
+        }
+        if (memStore['leave_notifications'] && typeof memStore['leave_notifications'] === 'object') {
+          delete memStore['leave_notifications'][leaveId];
+        }
+        return;
+      }
+    }
+
     // End session cleanup
     if (path === 'active_session' || path.startsWith('active_session_records/') || path.startsWith('session_devices/')) {
       if (path === 'active_session') {

@@ -120,33 +120,38 @@ router.put('/:id/acknowledge', protect, async (req, res) => {
   }
 });
 
-// DELETE /api/leaves/:id - Delete leave (only student who submitted, manager, or teacher clearing from notifications)
+// DELETE /api/leaves/:id - Delete leave (Student who submitted, Manager, Admin, or Teacher)
 router.delete('/:id', protect, async (req, res) => {
   try {
     const leave = await LeaveApplication.findById(req.params.id);
-    if (!leave) return res.status(404).json({ error: 'Leave application not found' });
-    
-    // Authorization: Student can delete their own, Manager/Teacher can delete approved leaves for their branch
-    if (req.user.role === 'student' && leave.studentId.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ error: 'Can only delete your own leave applications' });
+    if (!leave) {
+      // If already deleted, return success so client syncs cleanly
+      return res.json({ success: true, message: 'Leave application already deleted' });
     }
-    if (req.user.role === 'teacher') {
-      const teacherScope = req.user.branch || req.user.department;
-      if (!teacherScope) {
-        return res.status(403).json({ error: 'Teacher branch or department not set. Cannot clear leave.' });
-      }
-      // Teachers can only clear approved leaves from their own branch or department
-      if (leave.status !== 'approved' || (leave.studentBranch !== teacherScope && leave.approvedBranch !== teacherScope)) {
-        return res.status(403).json({ error: 'Can only clear approved leaves from your branch or department' });
-      }
-      console.log(`[DELETE /api/leaves/:id] Teacher (${req.user.name}, ${teacherScope}) cleared leave ID: ${req.params.id}`);
-    } else if (req.user.role !== 'student' && req.user.role !== 'manager') {
-      return res.status(403).json({ error: 'Not authorized to delete leave applications' });
+
+    const isStudentOwner = req.user.role === 'student' && (
+      (leave.studentId && leave.studentId.toString() === req.user._id.toString()) ||
+      (leave.studentUSN && req.user.usn && leave.studentUSN.trim().toUpperCase() === req.user.usn.trim().toUpperCase())
+    );
+
+    const isManagerOrAdmin = req.user.role === 'manager' || req.user.role === 'admin';
+
+    const isTeacherScope = req.user.role === 'teacher' && (
+      !req.user.branch ||
+      leave.studentBranch === req.user.branch ||
+      leave.approvedBranch === req.user.branch ||
+      leave.studentBranch === req.user.department
+    );
+
+    if (!isStudentOwner && !isManagerOrAdmin && !isTeacherScope) {
+      return res.status(403).json({ error: 'Not authorized to delete this leave application' });
     }
-    
+
     await LeaveApplication.findByIdAndDelete(req.params.id);
-    res.json({ success: true, message: 'Leave application deleted' });
+    console.log(`[DELETE /api/leaves/:id] Deleted leave ID: ${req.params.id} by ${req.user.name} (${req.user.role})`);
+    res.json({ success: true, message: 'Leave application deleted successfully' });
   } catch (err) {
+    console.error('Delete leave error:', err);
     res.status(500).json({ error: err.message });
   }
 });
