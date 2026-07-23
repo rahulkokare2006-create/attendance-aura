@@ -151,14 +151,13 @@ export default function StudentDashboard() {
         const session = snap.val();
         const sessionGradYear = getGraduationYear(session.batch);
         const userGradYear = getGraduationYear(currentUser?.batch);
-        const batchMatch = !session.batch || !currentUser?.batch || sessionGradYear === userGradYear;
-        if (
-          session &&
-          batchMatch &&
-          session.branch?.trim().toUpperCase() === currentUser?.branch?.trim().toUpperCase() &&
-          normalizeSem(session.semester) === normalizeSem(currentUser?.semester) &&
-          session.section?.trim().toUpperCase() === currentUser?.section?.trim().toUpperCase()
-        ) {
+        const norm = (str: any) => String(str || '').trim().toLowerCase();
+        const batchMatch = !session.batch || !currentUser?.batch || norm(sessionGradYear) === norm(userGradYear);
+        const branchMatch = !session.branch || !currentUser?.branch || norm(session.branch) === norm(currentUser?.branch);
+        const sectionMatch = !session.section || !currentUser?.section || norm(session.section) === norm(currentUser?.section);
+        const semMatch = !session.semester || !currentUser?.semester || normalizeSem(session.semester) === normalizeSem(currentUser?.semester);
+
+        if (session && batchMatch && branchMatch && sectionMatch && semMatch) {
           setActiveSession(session);
         } else {
           setActiveSession(null);

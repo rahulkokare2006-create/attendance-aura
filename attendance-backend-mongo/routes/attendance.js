@@ -206,19 +206,21 @@ router.post('/mark', protect, restrictTo('student'), async (req, res) => {
       return String(batchStr).trim().toLowerCase();
     };
 
+    const norm = (str) => String(str || '').trim().toLowerCase();
+
     // Graduation Year / Batch validation (supports Regular and Lateral Entry studying together)
     const sessionGradYear = getGraduationYear(session.batch);
     const userGradYear = getGraduationYear(req.user.batch);
-    if (session.batch && req.user.batch && sessionGradYear && userGradYear && sessionGradYear !== userGradYear) {
+    if (session.batch && req.user.batch && sessionGradYear && userGradYear && norm(sessionGradYear) !== norm(userGradYear)) {
       return res.status(400).json({ error: `❌ Graduation Year mismatch! Session is for Graduation Year ${sessionGradYear} but your profile is for ${userGradYear}` });
     }
     if (normalizeSem(session.semester) !== normalizeSem(req.user.semester)) {
       return res.status(400).json({ error: `❌ Semester mismatch! Session is for Semester ${session.semester} but your current semester is Semester ${req.user.semester}` });
     }
-    if (session.branch?.trim().toUpperCase() !== req.user.branch?.trim().toUpperCase()) {
+    if (session.branch && req.user.branch && norm(session.branch) !== norm(req.user.branch)) {
       return res.status(400).json({ error: `❌ Branch mismatch! Session is for ${session.branch} but you are in ${req.user.branch}` });
     }
-    if (session.section?.trim().toUpperCase() !== req.user.section?.trim().toUpperCase()) {
+    if (session.section && req.user.section && norm(session.section) !== norm(req.user.section)) {
       return res.status(400).json({ error: `❌ Section mismatch! Session is for Section ${session.section} but you are in Section ${req.user.section}` });
     }
 

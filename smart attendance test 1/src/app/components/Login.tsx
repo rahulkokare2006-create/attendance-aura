@@ -51,6 +51,7 @@ export default function Login() {
   const [childUSN, setChildUSN] = useState('');
   const [rollNo, setRollNo] = useState('');
   const [batch, setBatch] = useState('');
+  const [admissionType, setAdmissionType] = useState<'regular' | 'lateral'>('regular');
 
 
 
@@ -583,6 +584,33 @@ export default function Login() {
                             customPlaceholder="Enter Section Name"
                             options={['A','B','C','D','E','F'].map(s => ({ label: `Section ${s}`, value: s }))}
                           />
+                          <div className="space-y-1.5">
+                            <Label className={`${textColor} block text-xs font-semibold uppercase tracking-wider`}>Admission Type *</Label>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setAdmissionType('regular')}
+                                className={`py-2 px-3 text-xs font-semibold rounded-lg border transition-all ${
+                                  admissionType === 'regular'
+                                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700'
+                                }`}
+                              >
+                                Regular Student (4-Yr)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setAdmissionType('lateral')}
+                                className={`py-2 px-3 text-xs font-semibold rounded-lg border transition-all ${
+                                  admissionType === 'lateral'
+                                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700'
+                                }`}
+                              >
+                                Lateral Entry (3-Yr)
+                              </button>
+                            </div>
+                          </div>
                           <CustomSelect
                             label="Batch / Graduation Year *"
                             value={batch}
@@ -591,11 +619,20 @@ export default function Login() {
                             inputBg={inputBg}
                             textColor={textColor}
                             placeholder="Select Batch"
-                            customPlaceholder="Enter Batch e.g. 2025-2028 (Lateral Entry)"
-                            options={Array.from({length: 10}, (_, i) => {
-                              const year = new Date().getFullYear() - 5 + i;
-                              return { label: `${year}–${year+4} (Grad ${year+4})`, value: `${year}-${year+4}` };
-                            })}
+                            customPlaceholder={admissionType === 'lateral' ? 'Enter Lateral Batch e.g. 2025-2028' : 'Enter Batch e.g. 2024-2028'}
+                            options={
+                              admissionType === 'regular'
+                                ? Array.from({length: 8}, (_, i) => {
+                                    const startYear = new Date().getFullYear() - 4 + i;
+                                    const endYear = startYear + 4;
+                                    return { label: `${startYear}–${endYear} (Grad ${endYear})`, value: `${startYear}-${endYear}` };
+                                  })
+                                : Array.from({length: 8}, (_, i) => {
+                                    const startYear = new Date().getFullYear() - 3 + i;
+                                    const endYear = startYear + 3;
+                                    return { label: `${startYear}–${endYear} (Lateral Entry - Grad ${endYear})`, value: `${startYear}-${endYear} (Lateral Entry)` };
+                                  })
+                            }
                           />
                         </>
                       )}

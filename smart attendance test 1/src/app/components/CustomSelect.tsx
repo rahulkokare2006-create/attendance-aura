@@ -25,23 +25,29 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   textColor = 'text-gray-900',
   className = '',
 }) => {
-  const isPredefined = options.some(opt => opt.value === value);
+  const norm = (s: string) => (s || '').trim().toLowerCase();
+  
+  const matchedOpt = options.find(opt => norm(opt.value) === norm(value));
+
   const [selectedOpt, setSelectedOpt] = useState<string>(() => {
     if (!value) return '';
-    return isPredefined ? value : 'Other';
+    return matchedOpt ? matchedOpt.value : 'Other';
   });
   const [customVal, setCustomVal] = useState<string>(() => {
-    return isPredefined ? '' : value;
+    return matchedOpt ? '' : value;
   });
 
   useEffect(() => {
-    if (value && !options.some(opt => opt.value === value)) {
-      setSelectedOpt('Other');
-      setCustomVal(value);
-    } else if (value && options.some(opt => opt.value === value)) {
-      setSelectedOpt(value);
-      setCustomVal('');
-    } else if (!value) {
+    if (value) {
+      const match = options.find(opt => norm(opt.value) === norm(value));
+      if (match) {
+        setSelectedOpt(match.value);
+        setCustomVal('');
+      } else {
+        setSelectedOpt('Other');
+        setCustomVal(value);
+      }
+    } else {
       setSelectedOpt('');
       setCustomVal('');
     }
