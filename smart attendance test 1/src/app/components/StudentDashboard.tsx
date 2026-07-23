@@ -86,16 +86,15 @@ export default function StudentDashboard() {
   const [step, setStep] = useState<'otp' | 'gps' | 'done'>('otp');
   const [gpsStatus, setGpsStatus] = useState<'idle' | 'checking' | 'passed' | 'failed'>('idle');
 
-  // Generate unique device ID per student - stored in localStorage so it persists
+  // Generate stable Device Session Token - stored in localStorage per device/browser (persists across logouts)
   const getOrCreateDeviceId = (usn: string) => {
-    const key = `device_id_${usn}`;
-    let id = localStorage.getItem(key);
-    if (!id) {
-      // Create truly unique ID: USN + random + timestamp
-      id = `${usn}_${Math.random().toString(36).substring(2)}_${Date.now()}`;
-      localStorage.setItem(key, id);
+    const key = 'aura_device_token';
+    let token = localStorage.getItem(key);
+    if (!token) {
+      token = 'dt_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15) + '_' + Date.now();
+      localStorage.setItem(key, token);
     }
-    return id;
+    return token;
   };
   const [deviceId, setDeviceId] = useState('');
 

@@ -25,6 +25,11 @@ const userSchema = new mongoose.Schema({
   emailVerifyTokenExpires: { type: Date, default: null },
 }, { timestamps: true });
 
+// Performance indexes for fast lookups under high concurrent load
+userSchema.index({ usn: 1 }, { sparse: true });
+userSchema.index({ role: 1, branch: 1, semester: 1 });
+userSchema.index({ role: 1, department: 1 });
+
 // Hash password before saving
 userSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next();

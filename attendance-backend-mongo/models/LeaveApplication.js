@@ -23,4 +23,9 @@ const leaveSchema = new mongoose.Schema({
   viewedByManager: { type: Boolean, default: false },
 }, { timestamps: true });
 
+// Performance indexes for leave queries
+leaveSchema.index({ studentId: 1 });
+leaveSchema.index({ status: 1, studentBranch: 1 });
+leaveSchema.index({ status: 1, approvedBranch: 1 });
+
 module.exports = mongoose.model('LeaveApplication', leaveSchema);

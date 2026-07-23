@@ -21,4 +21,8 @@ const classSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
 
+// Performance indexes for class lookups
+classSchema.index({ teacherId: 1, isActive: 1 });
+classSchema.index({ branch: 1, semester: 1, section: 1 });
+
 module.exports = mongoose.model('Class', classSchema);

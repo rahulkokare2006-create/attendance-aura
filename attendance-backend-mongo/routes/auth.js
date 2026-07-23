@@ -9,6 +9,8 @@ const router = express.Router();
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const signToken = (id) => jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN });
 
+const { safeSendEmailAsync, sendEmailDirect } = require('../utils/emailQueue');
+
 const rateLimits = new Map();
 // Cleanup old rate limit keys periodically (every 5 minutes) to prevent memory leak
 setInterval(() => {
@@ -21,7 +23,7 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 const createRateLimiter = (action, options = {}) => (req, res, next) => {
-  const { maxPerIdentity = 10, maxPerIp = 300, windowMs = 60 * 1000 } = typeof options === 'number' ? { maxRequests: options } : options;
+  const { maxPerIdentity = 10, maxPerIp = 500, windowMs = 2 * 60 * 1000 } = typeof options === 'number' ? { maxRequests: options } : options;
   
   // Extract identifier (Email / USN / User ID / IP)
   const identity = (req.body?.email || req.body?.usn || req.user?._id || '').toString().toLowerCase().trim();
@@ -29,7 +31,7 @@ const createRateLimiter = (action, options = {}) => (req, res, next) => {
   
   const now = Date.now();
 
-  // Check identity limit (per email/account)
+  // Check identity limit (per email/account - 10 attempts per window)
   if (identity) {
     const idKey = `${action}:id:${identity}`;
     const idEntry = rateLimits.get(idKey) || { count: 0, start: now, windowMs };
@@ -45,7 +47,7 @@ const createRateLimiter = (action, options = {}) => (req, res, next) => {
     }
   }
 
-  // Check IP limit (broad protection for shared campus WiFi)
+  // Check IP limit (broad protection for shared campus WiFi - 500 requests per 2 mins)
   const ipKey = `${action}:ip:${ip}`;
   const ipEntry = rateLimits.get(ipKey) || { count: 0, start: now, windowMs };
   if (now - ipEntry.start > windowMs) {
@@ -227,11 +229,11 @@ router.post('/register', createRateLimiter('register', { maxPerIdentity: 5, maxP
       emailVerifyTokenExpires: verifyTokenExpires,
     });
 
-    // Send verification email
+    // Send verification email asynchronously via queue (non-blocking HTTP response)
     let verifyUrl = null;
     if (needsVerification && verifyToken) {
       verifyUrl = `${FRONTEND_URL}/verify-email/${verifyToken}`;
-      const emailResult = await safeSendEmail(normalizedEmail, 'Verify your Attendance Aura account', `
+      safeSendEmailAsync(normalizedEmail, 'Verify your Attendance Aura account', `
         <div style="font-family:Arial;padding:20px;">
           <h2>Welcome to Attendance Aura!</h2>
           <p>Click the button below to verify your email:</p>
@@ -241,15 +243,7 @@ router.post('/register', createRateLimiter('register', { maxPerIdentity: 5, maxP
           <p style="color:#666;margin-top:16px;">This link expires in 24 hours. If you do not receive it quickly, check your spam folder.</p>
         </div>
       `);
-      if (!emailResult.success) {
-        console.error(`❌ Failed to send verification email to ${normalizedEmail}:`, emailResult.error);
-        await User.deleteOne({ _id: user._id });
-        return res.status(500).json({
-          error: 'Failed to send verification email. Check email credentials and try again.',
-          detail: emailResult.error,
-        });
-      }
-      console.log(`📧 Verification email sent to ${normalizedEmail}`);
+      console.log(`📧 Verification email queued for ${normalizedEmail}`);
     }
 
     res.status(201).json({
@@ -265,7 +259,7 @@ router.post('/register', createRateLimiter('register', { maxPerIdentity: 5, maxP
 });
 
 // POST /api/auth/login
-router.post('/login', createRateLimiter('login', { maxPerIdentity: 10, maxPerIp: 1000, windowMs: 60 * 1000 }), async (req, res) => {
+router.post('/login', createRateLimiter('login', { maxPerIdentity: 10, maxPerIp: 500, windowMs: 2 * 60 * 1000 }), async (req, res) => {
   try {
     const { email, password, role } = req.body;
     
@@ -324,7 +318,7 @@ router.get('/verify-email/:token', async (req, res) => {
 });
 
 // POST /api/auth/resend-verification
-router.post('/resend-verification', createRateLimiter('resend-verification', { maxPerIdentity: 5, maxPerIp: 300, windowMs: 60 * 1000 }), async (req, res) => {
+router.post('/resend-verification', createRateLimiter('resend-verification', { maxPerIdentity: 5, maxPerIp: 500, windowMs: 2 * 60 * 1000 }), async (req, res) => {
   try {
     const { email } = req.body;
     if (!email || !email.trim()) return res.status(400).json({ error: 'Email is required' });
@@ -339,7 +333,7 @@ router.post('/resend-verification', createRateLimiter('resend-verification', { m
     await user.save();
     
     const verifyUrl = `${FRONTEND_URL}/verify-email/${verifyToken}`;
-    const emailResult = await safeSendEmail(email, 'Verify your Attendance Aura account', `
+    safeSendEmailAsync(email, 'Verify your Attendance Aura account', `
       <div style="font-family:Arial;padding:20px;">
         <h2>Verify Your Email</h2>
         <p>Click the button below to verify your email:</p>
@@ -349,13 +343,6 @@ router.post('/resend-verification', createRateLimiter('resend-verification', { m
         <p style="color:#666;margin-top:16px;">Link expires in 24 hours.</p>
       </div>
     `);
-    if (!emailResult.success) {
-      console.error('Failed to send verification email:', emailResult.error);
-      return res.status(500).json({
-        error: 'Failed to send verification email. Please check your email settings.',
-        detail: emailResult.error,
-      });
-    }
     
     res.json({ success: true, message: 'Verification email sent!', verifyUrl });
   } catch (err) {
@@ -365,7 +352,7 @@ router.post('/resend-verification', createRateLimiter('resend-verification', { m
 });
 
 // POST /api/auth/forgot-password
-router.post('/forgot-password', createRateLimiter('forgot-password', { maxPerIdentity: 5, maxPerIp: 300, windowMs: 60 * 1000 }), async (req, res) => {
+router.post('/forgot-password', createRateLimiter('forgot-password', { maxPerIdentity: 5, maxPerIp: 500, windowMs: 2 * 60 * 1000 }), async (req, res) => {
   try {
     const { email } = req.body;
     if (!email || !email.trim()) return res.status(400).json({ error: 'Email is required' });

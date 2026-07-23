@@ -23,4 +23,10 @@ const attendanceSchema = new mongoose.Schema({
   endTime: { type: String, default: '' },
 }, { timestamps: true });
 
+// Performance indexes for fast historical queries
+attendanceSchema.index({ sessionId: 1 }, { unique: true });
+attendanceSchema.index({ classId: 1, date: -1 });
+attendanceSchema.index({ teacherId: 1 });
+attendanceSchema.index({ 'records.usn': 1 });
+
 module.exports = mongoose.model('Attendance', attendanceSchema);

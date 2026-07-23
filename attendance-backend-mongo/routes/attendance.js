@@ -117,8 +117,9 @@ router.get('/active-session', protect, async (req, res) => {
 // POST /api/attendance/mark - Student marks attendance
 router.post('/mark', protect, restrictTo('student'), async (req, res) => {
   try {
-    const { sessionId, otp, deviceId, lat, lng } = req.body;
+    const { sessionId, otp, deviceId, deviceToken, lat, lng } = req.body;
     const usn = req.user.usn;
+    const targetToken = deviceToken || deviceId;
 
     const session = await ActiveSession.findOne({ sessionId, isActive: true });
     if (!session) return res.status(404).json({ error: '❌ No active session found! Ask your teacher to start the session.' });
@@ -126,18 +127,57 @@ router.post('/mark', protect, restrictTo('student'), async (req, res) => {
     // Validate OTP
     if (session.otp !== otp) return res.status(400).json({ error: '❌ Wrong OTP! Please check the OTP shown by your teacher.' });
 
-    // Device fingerprinting required
-    if (!deviceId) {
-      return res.status(400).json({ error: '❌ Device ID is required for attendance marking.' });
+    // Device Session Token required
+    if (!targetToken) {
+      return res.status(400).json({ error: '❌ Device Session Token is required for attendance marking.' });
     }
 
-    // Duplicate device detection
+    // Attendance Session Device Token Check (Proxy Detection strictly scoped per session)
     const duplicateUsage = Array.from(session.markedStudents.values()).find((entry) => {
       if (!entry || typeof entry !== 'object') return false;
-      return entry.deviceId === deviceId && entry.usn !== usn;
+      const entryToken = entry.deviceToken || entry.deviceId;
+      return entryToken === targetToken && entry.usn !== usn;
     });
+
     if (duplicateUsage) {
-      return res.status(400).json({ error: '❌ This device has already been used for another student in this session.' });
+      const existingStudent = session.students?.find(s => s.usn === duplicateUsage.usn);
+      const existingName = existingStudent?.name || duplicateUsage.studentName || duplicateUsage.usn;
+      const alertTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      // Emit socket notification to teacher dashboard
+      const proxyAlert = {
+        sessionId,
+        studentUSN: usn,
+        studentName: req.user.name,
+        existingUSN: duplicateUsage.usn,
+        existingName: existingName,
+        deviceToken: targetToken,
+        time: alertTime,
+        type: 'POSSIBLE_PROXY_ATTENDANCE',
+      };
+      req.app.get('io').emit(`session:${sessionId}:proxy-alert`, proxyAlert);
+      console.log(`[IO] Emitted proxy alert for session ${sessionId}: ${req.user.name} (${usn}) attempted attendance on device already used by ${existingName} (${duplicateUsage.usn})`);
+
+      // Push to session outsideAlerts list for teacher manual review
+      await ActiveSession.findOneAndUpdate(
+        { sessionId, isActive: true },
+        {
+          $push: {
+            outsideAlerts: {
+              studentName: req.user.name,
+              studentUSN: usn,
+              distance: 0,
+              radius: session.gpsRadius || 50,
+              time: `⚠️ Possible Proxy Attendance: Attempted on device already used by ${existingName} (${duplicateUsage.usn}) at ${alertTime}`,
+              markedAt: new Date(),
+            }
+          }
+        }
+      );
+
+      return res.status(400).json({
+        error: `❌ Possible Proxy Attendance Detected! This device was already used by ${existingName} (${duplicateUsage.usn}) in this session.`
+      });
     }
 
     // GPS Geofencing Check
@@ -186,7 +226,7 @@ router.post('/mark', protect, restrictTo('student'), async (req, res) => {
       { 
         $set: { 
           [`records.${usn}`]: 'PRESENT',
-          [`markedStudents.${usn}`]: { markedAt: new Date(), deviceId, usn }
+          [`markedStudents.${usn}`]: { markedAt: new Date(), deviceToken: targetToken, deviceId: targetToken, usn, studentName: req.user.name }
         } 
       },
       { new: true }

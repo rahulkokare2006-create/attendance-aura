@@ -137,6 +137,7 @@ export default function TeacherDashboard() {
   const [studentSearchQuery, setStudentSearchQuery] = useState('');
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [classes, setClasses] = useState<ClassData[]>([]);
+  const [sessionDuration, setSessionDuration] = useState<number>(30);
   
   const [selectedClass, setSelectedClass] = useState<ClassData | null>(() => {
     const stored = localStorage.getItem('teacher_selected_class');
@@ -898,7 +899,7 @@ export default function TeacherDashboard() {
         gpsRadius,
         geoFencingEnabled: actualGeoFencing,
       });
-    }, 30000);
+    }, sessionDuration * 1000);
 
     setOtpInterval(interval);
     setView('attendance');
@@ -1688,6 +1689,25 @@ export default function TeacherDashboard() {
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div className="mt-4 mb-2">
+              <label className={`text-sm font-medium ${textColor} mb-2 block flex items-center`}>
+                ⏱️ OTP & QR Code Refresh Duration
+              </label>
+              <select
+                value={sessionDuration}
+                onChange={(e) => setSessionDuration(Number(e.target.value))}
+                className={`${inputBg} w-full p-3 rounded-xl border font-medium cursor-pointer`}
+              >
+                <option value={30}>⚡ 30 Seconds (Default)</option>
+                <option value={60}>⏱️ 1 Minute (60s)</option>
+                <option value={90}>⏱️ 1.5 Minutes (90s)</option>
+                <option value={120}>⏱️ 2 Minutes (120s)</option>
+                <option value={180}>⏱️ 3 Minutes (180s)</option>
+                <option value={300}>⏱️ 5 Minutes (300s)</option>
+              </select>
+              <p className={`text-xs ${subTextColor} mt-1`}>Controls how frequently the OTP and QR code regenerate during the live session.</p>
             </div>
 
             <Button onClick={startAttendanceSession}

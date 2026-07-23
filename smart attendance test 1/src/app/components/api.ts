@@ -77,8 +77,8 @@ export const attendanceAPI = {
   updateOTP: (sessionId: string, otp: string, qrData?: string) =>
     apiFetch('/api/attendance/update-otp', { method: 'PUT', body: JSON.stringify({ sessionId, otp, qrData }) }),
   getActiveSession: () => apiFetch('/api/attendance/active-session'),
-  markAttendance: (sessionId: string, otp: string, deviceId?: string, lat?: number, lng?: number) =>
-    apiFetch('/api/attendance/mark', { method: 'POST', body: JSON.stringify({ sessionId, otp, deviceId, lat, lng }) }),
+  markAttendance: (sessionId: string, otp: string, deviceId?: string, lat?: number, lng?: number, deviceToken?: string) =>
+    apiFetch('/api/attendance/mark', { method: 'POST', body: JSON.stringify({ sessionId, otp, deviceId: deviceToken || deviceId, deviceToken: deviceToken || deviceId, lat, lng }) }),
   manualToggle: (sessionId: string, usn: string, status: string) =>
     apiFetch('/api/attendance/manual-toggle', { method: 'PUT', body: JSON.stringify({ sessionId, usn, status }) }),
   endSession: (sessionId: string, save: boolean) =>

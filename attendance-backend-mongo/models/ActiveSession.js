@@ -33,4 +33,8 @@ const activeSessionSchema = new mongoose.Schema({
   }],
 }, { timestamps: true });
 
+// Performance indexes for real-time active session resolution
+activeSessionSchema.index({ teacherId: 1, isActive: 1 });
+activeSessionSchema.index({ branch: 1, semester: 1, section: 1, isActive: 1 });
+
 module.exports = mongoose.model('ActiveSession', activeSessionSchema);

@@ -423,13 +423,12 @@ export const update = async (refObj: any, value: any) => {
           } catch {}
         }
         if (sessionData) {
-          const studentUsn = Object.keys(value)[0];
-          const deviceId = localStorage.getItem(`device_id_${studentUsn}`) || undefined;
+          const deviceId = localStorage.getItem('aura_device_token') || localStorage.getItem(`device_id_${studentUsn}`) || undefined;
           const latVal = localStorage.getItem('student_lat');
           const lngVal = localStorage.getItem('student_lng');
           const lat = latVal ? parseFloat(latVal) : undefined;
           const lng = lngVal ? parseFloat(lngVal) : undefined;
-          await attendanceAPI.markAttendance(sessionId, sessionData.otp, deviceId, lat, lng);
+          await attendanceAPI.markAttendance(sessionId, sessionData.otp, deviceId, lat, lng, deviceId);
           localStorage.removeItem('student_lat');
           localStorage.removeItem('student_lng');
           localStorage.removeItem('current_student_session');
