@@ -10,6 +10,7 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const signToken = (id) => jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN });
 
 const { safeSendEmailAsync, sendEmailDirect } = require('../utils/emailQueue');
+const { initializeStudentAttendanceHistory } = require('../utils/attendanceInitializer');
 
 const rateLimits = new Map();
 // Cleanup old rate limit keys periodically (every 5 minutes) to prevent memory leak
@@ -228,6 +229,13 @@ router.post('/register', createRateLimiter('register', { maxPerIdentity: 5, maxP
       emailVerifyToken: verifyToken,
       emailVerifyTokenExpires: verifyTokenExpires,
     });
+
+    // Automatically initialize past lecture history for new student account in background
+    if (user.role === 'student') {
+      setImmediate(() => {
+        initializeStudentAttendanceHistory(user).catch(err => console.error('[Auth] Error in initializeStudentAttendanceHistory:', err));
+      });
+    }
 
     // Send verification email asynchronously via queue (non-blocking HTTP response)
     let verifyUrl = null;

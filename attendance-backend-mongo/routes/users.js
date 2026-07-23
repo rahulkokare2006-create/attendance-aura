@@ -1,6 +1,7 @@
 const express = require('express');
 const User = require('../models/User');
 const { protect, restrictTo } = require('../middleware/auth');
+const { initializeStudentAttendanceHistory } = require('../utils/attendanceInitializer');
 const router = express.Router();
 
 // GET /api/users - Get all users (admin, manager, teacher)
@@ -88,6 +89,12 @@ router.post('/', protect, restrictTo('admin', 'manager'), async (req, res) => {
       childName: childName || null, childUSN: childUSN?.toUpperCase() || null,
       isEmailVerified: true, // Admin created accounts are pre-verified
     });
+
+    if (user.role === 'student') {
+      setImmediate(() => {
+        initializeStudentAttendanceHistory(user).catch(err => console.error('[Users] Error in initializeStudentAttendanceHistory:', err));
+      });
+    }
 
     const userData = user.toObject();
     delete userData.password;

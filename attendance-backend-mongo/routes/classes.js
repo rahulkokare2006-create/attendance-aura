@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const Class = require('../models/Class');
 const Attendance = require('../models/Attendance');
 const { protect, restrictTo } = require('../middleware/auth');
+const { initializeStudentAttendanceHistory } = require('../utils/attendanceInitializer');
 const router = express.Router();
 
 // GET /api/classes - Get teacher's classes
@@ -33,6 +34,24 @@ router.post('/', protect, restrictTo('teacher', 'manager'), async (req, res) => 
       type: type || 'Theory',
       students: students || [], radius: radius || 50,
     });
+
+    if (students && students.length > 0) {
+      setImmediate(async () => {
+        for (const s of students) {
+          if (s.usn) {
+            await initializeStudentAttendanceHistory({
+              usn: s.usn,
+              name: s.name,
+              branch,
+              semester,
+              section,
+              batch,
+            }).catch(err => console.error('[Classes] Error initializing history:', err));
+          }
+        }
+      });
+    }
+
     res.status(201).json({ success: true, class: cls });
   } catch (err) {
     res.status(500).json({ error: err.message });
