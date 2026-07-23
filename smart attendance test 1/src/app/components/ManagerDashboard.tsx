@@ -126,6 +126,15 @@ export default function ManagerDashboard() {
     setLoading(false);
   };
 
+  const getGraduationYear = (batchStr: any) => {
+    if (!batchStr) return '';
+    const matches = String(batchStr).match(/\b(20\d{2})\b/g);
+    if (matches && matches.length > 0) {
+      return matches[matches.length - 1];
+    }
+    return String(batchStr).trim().toLowerCase();
+  };
+
   const uniqueBatches = Array.from(new Set(students.map(s => s.batch).filter(Boolean)));
   const uniqueBranches = Array.from(new Set(students.map(s => s.branch).filter(Boolean)));
 
@@ -136,7 +145,7 @@ export default function ManagerDashboard() {
 
   const filteredStudents = myDeptStudents.filter(s => {
     const matchSearch = !searchQuery || s.name?.toLowerCase().includes(searchQuery.toLowerCase()) || s.usn?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchBatch = !filterBatch || s.batch === filterBatch;
+    const matchBatch = !filterBatch || getGraduationYear(s.batch) === getGraduationYear(filterBatch);
     const matchSem = !filterSemester || s.semester === filterSemester;
     return matchSearch && matchBatch && matchSem;
   });
@@ -173,7 +182,7 @@ export default function ManagerDashboard() {
 
     // Only include manager's department students
     const deptStudents = currentUser?.department ? students.filter(s => s.branch === currentUser.department) : students;
-    const batchStudents = selectedBatch === 'all' ? deptStudents : deptStudents.filter(s => s.batch === selectedBatch);
+    const batchStudents = selectedBatch === 'all' ? deptStudents : deptStudents.filter(s => getGraduationYear(s.batch) === getGraduationYear(selectedBatch));
     const preview = batchStudents.map(student => {
       const parentOfStudent = parents.find(p => p.childUSN === student.usn);
       const studentHistory = allHistory.find(h => h.usn === student.usn);
