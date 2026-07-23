@@ -49,7 +49,7 @@ async function initializeStudentAttendanceHistory(student) {
       // Match Branch, Semester, Section, and Graduation Year
       if (
         recordSemNorm === studentSemNorm &&
-        recordSectionNorm === studentSectionNorm &&
+        (!studentSectionNorm || !recordSectionNorm || recordSectionNorm === studentSectionNorm) &&
         (!studentGradYear || !recordGradYear || norm(studentGradYear) === norm(recordGradYear))
       ) {
         // Check if student already has a record on this attendance document

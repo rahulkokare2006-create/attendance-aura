@@ -430,28 +430,71 @@ router.post('/end-session', protect, restrictTo('teacher', 'manager'), async (re
   }
 });
 
-// GET /api/attendance/student/:usn - Get student attendance history
+// GET /api/attendance/student/:usn - Get student attendance history (supports academic group inheritance for new & lateral entry students)
 router.get('/student/:usn', protect, async (req, res) => {
   try {
     const usn = req.params.usn.toUpperCase();
-    // Sort by date descending to get most recent first, then by createdAt
-    const records = await Attendance.find({ 'records.usn': usn })
-      .select('className subject date records branch semester section sessionId year startTime endTime')
-      .sort({ createdAt: -1 });
-    
-    const history = records.map(r => {
-      const studentRecord = r.records.find(rec => rec.usn === usn);
+    const User = require('../models/User');
+    const studentUser = await User.findOne({ usn });
+
+    const getGraduationYear = (batchStr) => {
+      if (!batchStr) return '';
+      const matches = String(batchStr).match(/\b(20\d{2})\b/g);
+      if (matches && matches.length > 0) return matches[matches.length - 1];
+      return String(batchStr).trim().toLowerCase();
+    };
+
+    const normalizeSem = (sem) => {
+      if (!sem) return '';
+      const match = String(sem).match(/\d+/);
+      return match ? match[0] : String(sem).trim().toLowerCase();
+    };
+
+    const norm = (str) => String(str || '').trim().toLowerCase();
+
+    let candidateRecords = [];
+
+    if (studentUser && studentUser.branch && studentUser.semester) {
+      const studentBranch = studentUser.branch.trim();
+      const studentSem = normalizeSem(studentUser.semester);
+      const studentSection = norm(studentUser.section);
+      const studentGradYear = getGraduationYear(studentUser.batch);
+
+      // Find all class attendance records for the student's branch
+      const branchRecords = await Attendance.find({
+        branch: new RegExp(`^${studentBranch}$`, 'i'),
+      }).sort({ createdAt: -1 });
+
+      candidateRecords = branchRecords.filter(r => {
+        const rSem = normalizeSem(r.semester);
+        const rSection = norm(r.section);
+        const rGradYear = getGraduationYear(r.batch);
+
+        const semMatch = rSem === studentSem;
+        const sectionMatch = !studentSection || !rSection || rSection === studentSection;
+        const gradYearMatch = !studentGradYear || !rGradYear || norm(studentGradYear) === norm(rGradYear);
+        const hasDirectUSN = r.records && r.records.some(rec => rec.usn && rec.usn.toUpperCase() === usn);
+
+        return hasDirectUSN || (semMatch && sectionMatch && gradYearMatch);
+      });
+    } else {
+      candidateRecords = await Attendance.find({ 'records.usn': usn }).sort({ createdAt: -1 });
+    }
+
+    const history = candidateRecords.map(r => {
+      const studentRecord = r.records.find(rec => rec.usn && rec.usn.toUpperCase() === usn);
       return {
-        id: r._id, 
-        className: r.className, 
+        id: r._id,
+        className: r.className,
         subject: r.subject,
-        date: r.date, 
+        date: r.date,
         year: r.year,
         status: studentRecord?.status || 'ABSENT',
         sessionId: r.sessionId,
-        branch: r.branch, 
-        semester: r.semester, 
+        branch: r.branch,
+        semester: r.semester,
         section: r.section,
+        batch: r.batch,
         startTime: r.startTime,
         endTime: r.endTime,
       };
