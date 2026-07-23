@@ -139,6 +139,8 @@ export default function TeacherDashboard() {
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [classes, setClasses] = useState<ClassData[]>([]);
   const [sessionDuration, setSessionDuration] = useState<number>(30);
+  const [timeLeft, setTimeLeft] = useState<number>(30);
+  const [timerCountdownInterval, setTimerCountdownInterval] = useState<any>(null);
   
   const [selectedClass, setSelectedClass] = useState<ClassData | null>(() => {
     const stored = localStorage.getItem('teacher_selected_class');
@@ -903,6 +905,20 @@ export default function TeacherDashboard() {
     }, sessionDuration * 1000);
 
     setOtpInterval(interval);
+    
+    // Live 1-second countdown timer
+    setTimeLeft(sessionDuration);
+    if (timerCountdownInterval) clearInterval(timerCountdownInterval);
+    const countInt = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          return sessionDuration;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    setTimerCountdownInterval(countInt);
+
     setView('attendance');
     await fetchOutsideAlerts(sessionId);
 
@@ -1036,6 +1052,7 @@ export default function TeacherDashboard() {
     const saveChoice = window.confirm('Do you want to SAVE this attendance record?\n\nOK = Save attendance\nCancel = End WITHOUT saving');
 
     if (otpInterval) { clearInterval(otpInterval); setOtpInterval(null); }
+    if (timerCountdownInterval) { clearInterval(timerCountdownInterval); setTimerCountdownInterval(null); }
     if ((window as any).__liveAttendanceUnsubscribe) { (window as any).__liveAttendanceUnsubscribe(); (window as any).__liveAttendanceUnsubscribe = null; }
 
     try {
@@ -1739,7 +1756,14 @@ export default function TeacherDashboard() {
             <div className="text-center mb-6">
               <h2 className={`text-2xl font-bold ${textColor} mb-2`}>📡 Session Active - MASTER MODE</h2>
               <p className={subTextColor}>{selectedClass.name} - {selectedClass.subject}</p>
-              <p className={`${subTextColor} text-sm`}>QR & OTP refresh every 30 seconds</p>
+              <div className="flex items-center justify-center gap-2 mt-2 flex-wrap">
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                  ⏱️ QR & OTP refresh every {sessionDuration < 60 ? `${sessionDuration}s` : `${sessionDuration / 60} min`}
+                </span>
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">
+                  ⏳ Next Refresh In: {timeLeft}s
+                </span>
+              </div>
             </div>
 
             <div className="grid md:grid-cols-2 gap-6 mb-6">
