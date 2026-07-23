@@ -10,20 +10,55 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const signToken = (id) => jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN });
 
 const rateLimits = new Map();
-const createRateLimiter = (action, maxRequests = 5, windowMs = 60 * 1000) => (req, res, next) => {
-  const key = `${action}:${req.ip || req.connection.remoteAddress || 'unknown'}`;
+// Cleanup old rate limit keys periodically (every 5 minutes) to prevent memory leak
+setInterval(() => {
   const now = Date.now();
-  const entry = rateLimits.get(key) || { count: 0, start: now };
-  if (now - entry.start > windowMs) {
-    entry.count = 0;
-    entry.start = now;
+  for (const [key, entry] of rateLimits.entries()) {
+    if (now - entry.start > entry.windowMs) {
+      rateLimits.delete(key);
+    }
   }
-  entry.count += 1;
-  rateLimits.set(key, entry);
-  if (entry.count > maxRequests) {
-    const retryAfter = Math.ceil((entry.start + windowMs - now) / 1000);
-    return res.status(429).json({ error: `Too many requests. Try again in ${retryAfter} seconds.` });
+}, 5 * 60 * 1000);
+
+const createRateLimiter = (action, options = {}) => (req, res, next) => {
+  const { maxPerIdentity = 10, maxPerIp = 300, windowMs = 60 * 1000 } = typeof options === 'number' ? { maxRequests: options } : options;
+  
+  // Extract identifier (Email / USN / User ID / IP)
+  const identity = (req.body?.email || req.body?.usn || req.user?._id || '').toString().toLowerCase().trim();
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || req.connection.remoteAddress || 'unknown';
+  
+  const now = Date.now();
+
+  // Check identity limit (per email/account)
+  if (identity) {
+    const idKey = `${action}:id:${identity}`;
+    const idEntry = rateLimits.get(idKey) || { count: 0, start: now, windowMs };
+    if (now - idEntry.start > windowMs) {
+      idEntry.count = 0;
+      idEntry.start = now;
+    }
+    idEntry.count += 1;
+    rateLimits.set(idKey, idEntry);
+    if (idEntry.count > maxPerIdentity) {
+      const retryAfter = Math.ceil((idEntry.start + windowMs - now) / 1000);
+      return res.status(429).json({ error: `Too many attempts for this account. Try again in ${retryAfter} seconds.` });
+    }
   }
+
+  // Check IP limit (broad protection for shared campus WiFi)
+  const ipKey = `${action}:ip:${ip}`;
+  const ipEntry = rateLimits.get(ipKey) || { count: 0, start: now, windowMs };
+  if (now - ipEntry.start > windowMs) {
+    ipEntry.count = 0;
+    ipEntry.start = now;
+  }
+  ipEntry.count += 1;
+  rateLimits.set(ipKey, ipEntry);
+  if (ipEntry.count > maxPerIp) {
+    const retryAfter = Math.ceil((ipEntry.start + windowMs - now) / 1000);
+    return res.status(429).json({ error: `Too many requests from this network. Try again in ${retryAfter} seconds.` });
+  }
+
   next();
 };
 
@@ -70,7 +105,7 @@ const safeSendEmail = async (to, subject, html) => {
 };
 
 // POST /api/auth/register
-router.post('/register', createRateLimiter('register', 5, 2 * 60 * 1000), async (req, res) => {
+router.post('/register', createRateLimiter('register', { maxPerIdentity: 5, maxPerIp: 500, windowMs: 2 * 60 * 1000 }), async (req, res) => {
   try {
     const { name, email, password, role, phone, usn, rollNo, branch, semester, section, batch, childName, childUSN, department, designation } = req.body;
 
@@ -230,7 +265,7 @@ router.post('/register', createRateLimiter('register', 5, 2 * 60 * 1000), async 
 });
 
 // POST /api/auth/login
-router.post('/login', createRateLimiter('login', 5, 60 * 1000), async (req, res) => {
+router.post('/login', createRateLimiter('login', { maxPerIdentity: 10, maxPerIp: 1000, windowMs: 60 * 1000 }), async (req, res) => {
   try {
     const { email, password, role } = req.body;
     
@@ -289,7 +324,7 @@ router.get('/verify-email/:token', async (req, res) => {
 });
 
 // POST /api/auth/resend-verification
-router.post('/resend-verification', createRateLimiter('resend-verification', 5, 60 * 1000), async (req, res) => {
+router.post('/resend-verification', createRateLimiter('resend-verification', { maxPerIdentity: 5, maxPerIp: 300, windowMs: 60 * 1000 }), async (req, res) => {
   try {
     const { email } = req.body;
     if (!email || !email.trim()) return res.status(400).json({ error: 'Email is required' });
@@ -330,7 +365,7 @@ router.post('/resend-verification', createRateLimiter('resend-verification', 5, 
 });
 
 // POST /api/auth/forgot-password
-router.post('/forgot-password', createRateLimiter('forgot-password', 5, 60 * 1000), async (req, res) => {
+router.post('/forgot-password', createRateLimiter('forgot-password', { maxPerIdentity: 5, maxPerIp: 300, windowMs: 60 * 1000 }), async (req, res) => {
   try {
     const { email } = req.body;
     if (!email || !email.trim()) return res.status(400).json({ error: 'Email is required' });
