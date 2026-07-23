@@ -392,9 +392,13 @@ export default function StudentDashboard() {
       console.log('[OTP] Session data:', { sessionId: session.sessionId, branch: session.branch, semester: session.semester, section: session.section, batch: session.batch });
       console.log('[OTP] Student data:', { branch: currentUser?.branch, semester: currentUser?.semester, section: currentUser?.section, batch: currentUser?.batch });
 
-      // Check admission batch match
-      if (session.batch && currentUser?.batch && normalizeSem(session.batch) !== normalizeSem(currentUser.batch)) {
-        toast.error(`❌ Admission Batch Mismatch! Session is for Batch ${session.batch} but your profile is registered in Batch ${currentUser.batch}.`);
+      const sessionGradYear = getGraduationYear(session.batch);
+      const userGradYear = getGraduationYear(currentUser?.batch);
+      const normStr = (str: any) => String(str || '').trim().toLowerCase();
+
+      // Check admission batch / graduation year match (supports Regular and Lateral Entry studying together)
+      if (session.batch && currentUser?.batch && sessionGradYear && userGradYear && normStr(sessionGradYear) !== normStr(userGradYear)) {
+        toast.error(`❌ Graduation Year Mismatch! Session is for Graduation Year ${sessionGradYear} but your profile is for Graduation Year ${userGradYear}.`);
         setSubmitting(false); return;
       }
       // Check semester match
@@ -402,13 +406,13 @@ export default function StudentDashboard() {
         toast.error(`❌ Semester Mismatch! Session is for Semester ${session.semester} but your current semester is Semester ${currentUser?.semester}.`); 
         setSubmitting(false); return; 
       }
-      // Check branch match
-      if (currentUser?.branch?.trim().toUpperCase() !== session.branch?.trim().toUpperCase()) { 
+      // Check branch match (case-insensitive & trimmed for custom branches)
+      if (currentUser?.branch && session.branch && normStr(currentUser.branch) !== normStr(session.branch)) { 
         toast.error(`❌ Branch Mismatch! Session is for ${session.branch} but you are in ${currentUser?.branch}. Contact your teacher.`); 
         setSubmitting(false); return; 
       }
-      // Check section match
-      if (currentUser?.section?.trim().toUpperCase() !== session.section?.trim().toUpperCase()) { 
+      // Check section match (case-insensitive & trimmed for custom sections)
+      if (currentUser?.section && session.section && normStr(currentUser.section) !== normStr(session.section)) { 
         toast.error(`❌ Section Mismatch! Session is for Section ${session.section} but you are in Section ${currentUser?.section}. Contact your teacher.`); 
         setSubmitting(false); return; 
       }
